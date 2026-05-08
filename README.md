@@ -1,5 +1,6 @@
+
 <p align="center">
-  <img src="./assets/github-cli.png" alt="SnapBack CLI - The command-line interface for effortless restores and snapshots" />
+ <img width="2172" height="724" alt="vreko-lockup" src="https://github.com/user-attachments/assets/fddd90b6-4bb5-4985-8f73-3b63060c526f" />
 </p>
 
 [![npm version](https://img.shields.io/npm/v/@snapback/cli.svg)](https://www.npmjs.com/package/@snapback/cli)
