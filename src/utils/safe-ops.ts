@@ -11,8 +11,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import chalk from "chalk";
-import { confirm, confirmDangerous, type DryRunChange, dryRunPreview } from "../ui/prompts";
+import { clackConfirm, clackLog } from "../ui/prompts-clack";
 
 // =============================================================================
 // TYPES
@@ -39,11 +38,18 @@ export interface OperationChange {
 	after?: string;
 }
 
+/** Describes a change for dry-run preview */
+export interface DryRunChange {
+	type: "create" | "update" | "delete";
+	path: string;
+	details?: string[];
+}
+
 // =============================================================================
 // OPERATION HISTORY (for undo support)
 // =============================================================================
 
-const HISTORY_FILE = ".snapback/operation-history.json";
+const HISTORY_FILE = ".vreko/operation-history.json";
 const MAX_HISTORY_SIZE = 50;
 
 interface OperationHistory {
@@ -139,7 +145,12 @@ export function handleDryRun(options: SafeOperationOptions, changes: DryRunChang
 		return false; // Not a dry run, proceed with actual operation
 	}
 
-	dryRunPreview(changes);
+	// Display dry-run preview
+	clackLog.info("[DRY RUN] The following changes would be made:");
+	for (const change of changes) {
+		const icon = change.type === "create" ? "+" : change.type === "delete" ? "-" : "~";
+		clackLog.info(`  ${icon} ${change.path}`);
+	}
 	return true; // Was a dry run, operation should be skipped
 }
 
@@ -190,48 +201,32 @@ export async function confirmOperation(
 	const { riskLevel = "low" } = options;
 
 	if (riskLevel === "high") {
-		// For dangerous operations, require typing confirmation
-		console.log(chalk.red.bold("\n⚠️  DANGEROUS OPERATION"));
-		console.log(chalk.white(description));
-		console.log();
-
-		return confirmDangerous("This action cannot be undone.", "yes, delete");
+		clackLog.error("⚠️  This action cannot be undone.");
+		return clackConfirm("Are you sure you want to proceed?", { defaultValue: false });
 	}
 
 	if (riskLevel === "medium") {
-		// For medium-risk operations, use standard confirmation
-		console.log(chalk.yellow("\n⚠️  This operation may modify files"));
-		return confirm({
-			message: description,
-			default: false,
-		});
+		return clackConfirm(description, { defaultValue: false });
 	}
 
 	// For low-risk operations, use simple confirmation
-	return confirm({
-		message: description,
-		default: true,
-	});
+	return clackConfirm(description, { defaultValue: true });
 }
 
 /**
  * Display what will be affected before an operation
  */
-export function showAffectedFiles(files: string[], action: string): void {
-	console.log(chalk.cyan(`\nFiles that will be ${action}:`));
-
+export function showAffectedFiles(files: string[], _action: string): void {
 	if (files.length > 10) {
-		// Show first 10 and summarize
 		for (const file of files.slice(0, 10)) {
-			console.log(chalk.gray(`  • ${file}`));
+			clackLog.info(`  ${file}`);
 		}
-		console.log(chalk.gray(`  ... and ${files.length - 10} more files`));
+		clackLog.info(`  ... and ${files.length - 10} more files`);
 	} else {
 		for (const file of files) {
-			console.log(chalk.gray(`  • ${file}`));
+			clackLog.info(`  ${file}`);
 		}
 	}
-	console.log();
 }
 
 // =============================================================================
@@ -245,25 +240,14 @@ export async function undoLastOperation(): Promise<boolean> {
 	const lastOp = getLastOperation();
 
 	if (!lastOp) {
-		console.log(chalk.yellow("No undoable operations found"));
 		return false;
 	}
 
 	if (!lastOp.canUndo) {
-		console.log(chalk.yellow("The last operation cannot be undone"));
 		return false;
 	}
 
-	console.log(chalk.cyan("\nLast operation:"));
-	console.log(chalk.white(`  ${lastOp.description}`));
-	console.log(chalk.gray(`  ${lastOp.timestamp}`));
-	console.log(chalk.gray(`  Changes: ${lastOp.changes.length} files`));
-	console.log();
-
-	const shouldUndo = await confirm({
-		message: "Undo this operation?",
-		default: false,
-	});
+	const shouldUndo = await clackConfirm("Undo this operation?", { defaultValue: false });
 
 	if (!shouldUndo) {
 		return false;
@@ -279,7 +263,6 @@ export async function undoLastOperation(): Promise<boolean> {
 					// Undo create = delete the file
 					if (change.path && fs.existsSync(change.path)) {
 						fs.unlinkSync(change.path);
-						console.log(chalk.red(`  - Removed ${change.path}`));
 					}
 					break;
 
@@ -287,7 +270,6 @@ export async function undoLastOperation(): Promise<boolean> {
 					// Undo delete = restore the file
 					if (change.before !== undefined) {
 						fs.writeFileSync(change.path, change.before);
-						console.log(chalk.green(`  + Restored ${change.path}`));
 					}
 					break;
 
@@ -295,21 +277,18 @@ export async function undoLastOperation(): Promise<boolean> {
 					// Undo update = restore previous content
 					if (change.before !== undefined) {
 						fs.writeFileSync(change.path, change.before);
-						console.log(chalk.yellow(`  ~ Reverted ${change.path}`));
 					}
 					break;
 			}
 		} catch (_error) {
-			console.log(chalk.red(`  ✗ Failed to undo ${change.path}`));
 			success = false;
 		}
 	}
 
 	if (success) {
 		removeOperation(lastOp.id);
-		console.log(chalk.green("\n✓ Operation undone successfully"));
 	} else {
-		console.log(chalk.yellow("\n! Some changes could not be undone"));
+		// intentionally empty
 	}
 
 	return success;

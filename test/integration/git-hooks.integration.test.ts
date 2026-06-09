@@ -24,8 +24,8 @@ vi.mock("node:fs", () => ({
 	readFileSync: vi.fn(),
 }));
 
-// Mock @snapback/core
-vi.mock("@snapback/core", () => ({
+// Mock @vreko/core
+vi.mock("@vreko/core", () => ({
 	Guardian: vi.fn().mockImplementation(() => ({
 		addPlugin: vi.fn(),
 		analyze: vi.fn().mockResolvedValue({
@@ -49,7 +49,7 @@ const __dirname = dirname(__filename);
 // 1. Not mock execSync and run as true integration tests
 // 2. Use a different approach that doesn't conflict with mocks
 // Set up temporary git repository for testing
-describe.skip("Git Hooks Integration Tests", () => {
+describe("@integration Git Hooks Integration Tests", () => {
 	let tempDir: string;
 	let originalCwd: string;
 
@@ -80,8 +80,8 @@ describe.skip("Git Hooks Integration Tests", () => {
 		// Clean up temporary directory
 		try {
 			execSync(`rm -rf ${tempDir}`, { stdio: "ignore" });
-		} catch (error) {
-			console.warn("Failed to clean up temporary directory:", error);
+		} catch {
+			/* intentionally empty */
 		}
 	});
 
@@ -155,7 +155,7 @@ describe.skip("Git Hooks Integration Tests", () => {
 // SKIPPED: These tests require check/prepush functions to be exported from src/index.ts
 // They're currently Commander commands without separate exports.
 // TODO: Refactor to test through CLI execution or export the functions
-describe.skip("Commit/push enforcement", () => {
+describe("@integration Commit/push enforcement", () => {
 	beforeEach(() => {
 		// Clear any existing state
 		vi.clearAllMocks();
@@ -189,7 +189,7 @@ describe.skip("Commit/push enforcement", () => {
 
 	it("should check staged files and exit with 1 when critical findings detected", async () => {
 		// Mock the Guardian analyze method to return critical findings
-		const core = await import("@snapback/core");
+		const core = await import("@vreko/core");
 		(core as any).Guardian = vi.fn().mockImplementation(() => ({
 			addPlugin: vi.fn(),
 			analyze: vi.fn().mockResolvedValue({
@@ -221,7 +221,7 @@ describe.skip("Commit/push enforcement", () => {
 
 	it("should bypass critical findings when bypass option is provided", async () => {
 		// Mock the Guardian analyze method to return critical findings
-		const core = await import("@snapback/core");
+		const core = await import("@vreko/core");
 		(core as any).Guardian = vi.fn().mockImplementation(() => ({
 			addPlugin: vi.fn(),
 			analyze: vi.fn().mockResolvedValue({

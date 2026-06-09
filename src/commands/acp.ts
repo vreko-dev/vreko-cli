@@ -2,9 +2,9 @@
  * ACP CLI Command
  *
  * Implements ACP server management for editor integration:
- * - `snap acp serve` - Start ACP server for Zed/JetBrains integration
- * - `snap acp info` - Print ACP agent metadata and configuration examples
- * - `snap acp configure` - Auto-configure ACP for supported editors
+ * - `vr acp serve` - Start ACP server for Zed/JetBrains integration
+ * - `vr acp info` - Print ACP agent metadata and configuration examples
+ * - `vr acp configure` - Auto-configure ACP for supported editors
  *
  * @module commands/acp
  */
@@ -83,7 +83,7 @@ export function createAcpCommand() {
 			const version = await getPackageVersion();
 
 			const info = {
-				name: "snapback",
+				name: "vreko",
 				version,
 				description: "AI-assisted code protection agent",
 				capabilities: {
@@ -97,16 +97,16 @@ export function createAcpCommand() {
 				config: {
 					zed: {
 						agent_servers: {
-							snapback: {
-								command: "snapback",
+							vreko: {
+								command: "vreko",
 								args: ["acp", "serve"],
 							},
 						},
 					},
 					jetbrains: {
 						agent_servers: {
-							snapback: {
-								command: "snapback",
+							vreko: {
+								command: "vreko",
 								args: ["acp", "serve"],
 								use_idea_mcp: true,
 							},
@@ -121,30 +121,30 @@ export function createAcpCommand() {
 			}
 
 			// Pretty output
-			console.log("");
-			console.log(chalk.bold.cyan("SnapBack ACP Agent") + chalk.gray(` v${version}`));
+			console.log();
+			console.log(chalk.bold.cyan("Vreko ACP Agent") + chalk.gray(` v${version}`));
 			console.log(chalk.white("AI-assisted code protection for any ACP editor"));
-			console.log("");
+			console.log();
 
 			console.log(chalk.bold("Available Tools:"));
 			for (const tool of info.capabilities.tools) {
 				console.log(`  ${chalk.green("•")} ${chalk.cyan(tool.name)}: ${tool.description}`);
 			}
 
-			console.log("");
+			console.log();
 			console.log(chalk.bold("Configuration Examples:"));
 
-			console.log("");
+			console.log();
 			console.log(chalk.yellow("Zed") + chalk.gray(" (~/.config/zed/settings.json):"));
 			console.log(chalk.gray(JSON.stringify(info.config.zed, null, 2)));
 
-			console.log("");
+			console.log();
 			console.log(chalk.yellow("JetBrains") + chalk.gray(" (~/.config/jetbrains/ai-assistant.json):"));
 			console.log(chalk.gray(JSON.stringify(info.config.jetbrains, null, 2)));
 
-			console.log("");
-			console.log(chalk.gray("Run: snapback acp configure --zed  # Auto-configure for Zed"));
-			console.log("");
+			console.log();
+			console.log(chalk.gray("Run: vreko acp configure --zed  # Auto-configure for Zed"));
+			console.log();
 		});
 
 	// ─────────────────────────────────────────────────────────────────────────
@@ -226,15 +226,15 @@ export function createAcpCommand() {
 // =============================================================================
 
 async function configureZed(configPath: string): Promise<void> {
-	await addAgentToConfig(configPath, "snapback", {
-		command: "snapback",
+	await addAgentToConfig(configPath, "vreko", {
+		command: "vreko",
 		args: ["acp", "serve"],
 	});
 }
 
 async function configureJetBrains(configPath: string): Promise<void> {
-	await addAgentToConfig(configPath, "snapback", {
-		command: "snapback",
+	await addAgentToConfig(configPath, "vreko", {
+		command: "vreko",
 		args: ["acp", "serve"],
 		use_idea_mcp: true,
 	});

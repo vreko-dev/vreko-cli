@@ -20,26 +20,16 @@ export function createUndoCommand(): Command {
 				const operations = getRecentOperations(10);
 
 				if (operations.length === 0) {
-					console.log(chalk.yellow("No recent operations found"));
+					console.log("No recent operations to undo");
 					return;
 				}
-
-				console.log(chalk.cyan.bold("\nRecent Operations:\n"));
 
 				for (let i = 0; i < operations.length; i++) {
 					const op = operations[i];
 					const status = op.canUndo ? chalk.green("●") : chalk.gray("○");
 					const time = new Date(op.timestamp).toLocaleString();
-
-					console.log(`${status} ${chalk.white(op.description)}`);
-					console.log(chalk.gray(`  ${time} • ${op.changes.length} changes`));
-
-					if (i < operations.length - 1) {
-						console.log();
-					}
+					console.log(`  ${status} [${i + 1}] ${op.description}  -  ${time}`);
 				}
-
-				console.log(chalk.gray("\n● = Can undo  ○ = Cannot undo\n"));
 				return;
 			}
 

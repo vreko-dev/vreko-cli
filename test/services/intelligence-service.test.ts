@@ -1,271 +1,228 @@
 /**
- * Intelligence Service Unit Tests
+ * Intelligence Service Tests
  *
- * Tests the CLI → Intelligence bridge (intelligence-service.ts).
- * Uses real file system operations to avoid vi.mock hoisting issues.
- *
- * Architecture alignment:
- * - daemon_architecture.md: CLI → Daemon → Intelligence
- * - main_onboard.md: CLI as universal entry point
- * - web_onboard.md: Layer 2 (account-required) separate
- *
- * Tests verify:
- * - Creates Intelligence instances for initialized workspaces
- * - Throws helpful errors for uninitialized workspaces
- * - Caches instances per workspace path
- * - Proper config creation with correct paths
- *
- * @see daemon_architecture.md for architecture context
- * @module test/services/intelligence-service
+ * Rewritten for the daemon-proxy architecture.
+ * IntelligenceService is a thin proxy  -  all real work runs in vrekod.
+ * Tests verify the proxy contract, caching, and guard conditions.
  */
 
-import { mkdir, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Mock daemon client  -  controls daemon availability
+vi.mock("../../src/services/service-client.js", () => ({
+	connectToDaemon: vi.fn(),
+	isDaemonAvailable: vi.fn(),
+	requireDaemon: vi.fn(),
+}));
+
+// Mock workspace initialization check
+vi.mock("../../src/services/vreko-dir.js", () => ({
+	isVrekoInitialized: vi.fn(),
+}));
+
+// Suppress print output
+vi.mock("../../src/utils/print.js", () => ({
+	print: vi.fn(),
+}));
 
 import {
 	clearIntelligenceCache,
-	createWorkspaceIntelligenceConfig,
 	getIntelligence,
 	getIntelligenceWithSemantic,
 	hasIntelligence,
-} from "../../src/services/intelligence-service";
-import { createSnapbackDirectory, saveWorkspaceConfig } from "../../src/services/snapback-dir";
+} from "../../src/services/intelligence-service.js";
+import { connectToDaemon, isDaemonAvailable, requireDaemon } from "../../src/services/service-client.js";
+import { isVrekoInitialized } from "../../src/services/vreko-dir.js";
 
-describe("intelligence-service", () => {
-	let testDir: string;
-	let testDir2: string;
+const WORKSPACE = "/test/workspace";
 
-	beforeEach(async () => {
-		// Create temporary test directories
-		testDir = join(tmpdir(), `snapback-intel-test-${Date.now()}`);
-		testDir2 = join(tmpdir(), `snapback-intel-test2-${Date.now()}`);
-		await mkdir(testDir, { recursive: true });
-		await mkdir(testDir2, { recursive: true });
+function makeMockDaemonClient() {
+	return {
+		context: {
+			get: vi.fn().mockResolvedValue({
+				patterns: [],
+				constraints: [],
+				learnings: [],
+				files: [],
+			}),
+		},
+		validation: {
+			comprehensive: vi.fn().mockResolvedValue({
+				passed: true,
+				confidence: 0.9,
+				totalIssues: 0,
+				recommendation: "looks good",
+			}),
+		},
+		violation: {
+			report: vi.fn().mockResolvedValue({
+				reported: true,
+				file: "src/foo.ts",
+			}),
+		},
+		learning: {
+			list: vi.fn().mockResolvedValue({
+				learnings: [],
+				total: 0,
+			}),
+		},
+	};
+}
+
+beforeEach(() => {
+	vi.mocked(isVrekoInitialized).mockResolvedValue(true);
+	vi.mocked(isDaemonAvailable).mockReturnValue(true);
+	vi.mocked(requireDaemon).mockResolvedValue(makeMockDaemonClient() as never);
+});
+
+afterEach(async () => {
+	await clearIntelligenceCache();
+	vi.clearAllMocks();
+});
+
+describe("getIntelligence", () => {
+	it("returns a proxy when workspace is initialized", async () => {
+		const intel = await getIntelligence(WORKSPACE);
+		expect(intel).toBeDefined();
+		expect(typeof intel.getContext).toBe("function");
 	});
 
-	afterEach(async () => {
-		// Clear instance cache between tests
-		clearIntelligenceCache();
-
-		// Clean up test directories
-		try {
-			await rm(testDir, { recursive: true, force: true });
-			await rm(testDir2, { recursive: true, force: true });
-		} catch {
-			// Ignore cleanup errors
-		}
+	it("throws when workspace is not initialized", async () => {
+		vi.mocked(isVrekoInitialized).mockResolvedValue(false);
+		await expect(getIntelligence(WORKSPACE)).rejects.toThrow("Vreko not initialized");
 	});
 
-	/**
-	 * Helper to initialize a workspace with .snapback directory
-	 */
-	async function initializeWorkspace(workspaceRoot: string): Promise<void> {
-		await createSnapbackDirectory(workspaceRoot);
-		await saveWorkspaceConfig(
-			{
-				workspaceId: "test-workspace",
-				tier: "free",
-				protectionLevel: "standard",
-				createdAt: new Date().toISOString(),
-				updatedAt: new Date().toISOString(),
-			},
-			workspaceRoot,
-		);
-	}
+	it("caches the proxy per workspace path", async () => {
+		const intel1 = await getIntelligence(WORKSPACE);
+		const intel2 = await getIntelligence(WORKSPACE);
 
-	describe("createWorkspaceIntelligenceConfig", () => {
-		it("should create config with correct paths", async () => {
-			await initializeWorkspace(testDir);
-
-			const config = createWorkspaceIntelligenceConfig(testDir);
-
-			// rootDir should point to .snapback directory
-			expect(config.rootDir).toBe(join(testDir, ".snapback"));
-
-			// Sub-directories should be relative to rootDir
-			expect(config.patternsDir).toBe("patterns");
-			expect(config.learningsDir).toBe("learnings");
-			expect(config.constraintsFile).toBe("constraints.md");
-			expect(config.violationsFile).toBe("patterns/violations.jsonl");
-			expect(config.embeddingsDb).toBe("embeddings.db");
-		});
-
-		it("should apply sensible defaults", async () => {
-			await initializeWorkspace(testDir);
-
-			const config = createWorkspaceIntelligenceConfig(testDir);
-
-			// Semantic search disabled by default for fast CLI startup
-			expect(config.enableSemanticSearch).toBe(false);
-
-			// Learning loop enabled by default
-			expect(config.enableLearningLoop).toBe(true);
-
-			// Auto-promotion enabled by default (3x → pattern, 5x → automation)
-			expect(config.enableAutoPromotion).toBe(true);
-
-			// Context files should include standard patterns
-			expect(config.contextFiles).toContain("patterns/workspace-patterns.json");
-			expect(config.contextFiles).toContain("vitals.json");
-		});
-
-		it("should allow custom options to override defaults", async () => {
-			await initializeWorkspace(testDir);
-
-			const config = createWorkspaceIntelligenceConfig(testDir, {
-				enableSemanticSearch: true,
-				enableLearningLoop: false,
-				enableAutoPromotion: false,
-			});
-
-			expect(config.enableSemanticSearch).toBe(true);
-			expect(config.enableLearningLoop).toBe(false);
-			expect(config.enableAutoPromotion).toBe(false);
-		});
+		expect(intel1).toBe(intel2);
+		// isVrekoInitialized is called before the cache check on every call,
+		// so second call still hits it even though the proxy is cached.
+		expect(isVrekoInitialized).toHaveBeenCalledTimes(2);
 	});
 
-	describe("getIntelligence", () => {
-		it("should create Intelligence for initialized workspace", async () => {
-			await initializeWorkspace(testDir);
+	it("returns different instances for different workspaces", async () => {
+		const intel1 = await getIntelligence("/workspace/a");
+		const intel2 = await getIntelligence("/workspace/b");
 
-			const intel = await getIntelligence(testDir);
-
-			expect(intel).toBeDefined();
-			// Verify it has expected Intelligence methods
-			expect(typeof intel.getContext).toBe("function");
-			expect(typeof intel.checkPatterns).toBe("function");
-			expect(typeof intel.reportViolation).toBe("function");
-			expect(typeof intel.recordLearning).toBe("function");
-		});
-
-		it("should throw if workspace not initialized", async () => {
-			// testDir exists but has no .snapback directory
-			await expect(getIntelligence(testDir)).rejects.toThrow("SnapBack not initialized. Run: snap init");
-		});
-
-		it("should return cached instance on second call", async () => {
-			await initializeWorkspace(testDir);
-
-			const intel1 = await getIntelligence(testDir);
-			const intel2 = await getIntelligence(testDir);
-
-			// Should be the exact same instance (cached)
-			expect(intel1).toBe(intel2);
-		});
-
-		it("should create separate instances for different workspaces", async () => {
-			await initializeWorkspace(testDir);
-			await initializeWorkspace(testDir2);
-
-			const intel1 = await getIntelligence(testDir);
-			const intel2 = await getIntelligence(testDir2);
-
-			// Different workspaces should get different instances
-			expect(intel1).not.toBe(intel2);
-		});
+		expect(intel1).not.toBe(intel2);
 	});
 
-	describe("hasIntelligence", () => {
-		it("should return true for initialized workspace", async () => {
-			await initializeWorkspace(testDir);
+	it("defaults to process.cwd() when no workspace provided", async () => {
+		await getIntelligence();
+		expect(isVrekoInitialized).toHaveBeenCalledWith(process.cwd());
+	});
+});
 
-			const result = await hasIntelligence(testDir);
+describe("getIntelligenceWithSemantic", () => {
+	it("returns a proxy (semantic handled in daemon, not CLI)", async () => {
+		const intel = await getIntelligenceWithSemantic(WORKSPACE);
+		expect(intel).toBeDefined();
+		expect(typeof intel.getContext).toBe("function");
+	});
+});
 
-			expect(result).toBe(true);
-		});
-
-		it("should return false for uninitialized workspace", async () => {
-			// testDir exists but has no .snapback directory
-			const result = await hasIntelligence(testDir);
-
-			expect(result).toBe(false);
-		});
+describe("hasIntelligence", () => {
+	it("returns true when workspace initialized and daemon available", async () => {
+		expect(await hasIntelligence(WORKSPACE)).toBe(true);
 	});
 
-	describe("clearIntelligenceCache", () => {
-		it("should clear cache and allow new instance creation", async () => {
-			await initializeWorkspace(testDir);
-
-			const intel1 = await getIntelligence(testDir);
-
-			// Clear the cache
-			clearIntelligenceCache();
-
-			// Get a new instance - should be different object
-			const intel2 = await getIntelligence(testDir);
-
-			// Should not be the same instance after cache clear
-			expect(intel1).not.toBe(intel2);
-		});
+	it("returns false when workspace is not initialized", async () => {
+		vi.mocked(isVrekoInitialized).mockResolvedValue(false);
+		expect(await hasIntelligence(WORKSPACE)).toBe(false);
 	});
 
-	describe("getIntelligenceWithSemantic", () => {
-		it("should create semantic Intelligence instance for initialized workspace", async () => {
-			await initializeWorkspace(testDir);
+	it("returns false when daemon is not available", async () => {
+		vi.mocked(isDaemonAvailable).mockReturnValue(false);
+		expect(await hasIntelligence(WORKSPACE)).toBe(false);
+	});
+});
 
-			const semanticIntel1 = await getIntelligenceWithSemantic(testDir);
-			const semanticIntel2 = await getIntelligenceWithSemantic(testDir);
+describe("clearIntelligenceCache", () => {
+	it("forces re-initialization on next call", async () => {
+		await getIntelligence(WORKSPACE);
+		expect(isVrekoInitialized).toHaveBeenCalledOnce();
 
-			// Semantic variant should be cached for the same workspace
-			expect(semanticIntel1).toBe(semanticIntel2);
+		await clearIntelligenceCache();
+		await getIntelligence(WORKSPACE);
+		expect(isVrekoInitialized).toHaveBeenCalledTimes(2);
+	});
+});
 
-			// Semantic instance should differ from the non-semantic one
-			const regularIntel = await getIntelligence(testDir);
-			expect(semanticIntel1).not.toBe(regularIntel);
-		});
+describe("IntelligenceProxy – method delegation", () => {
+	let sharedMockClient: ReturnType<typeof makeMockDaemonClient>;
 
-		it("should throw for uninitialized workspace", async () => {
-			// testDir exists but SnapBack has not been initialized
-			await expect(getIntelligenceWithSemantic(testDir)).rejects.toThrow(
-				"SnapBack not initialized. Run: snap init",
-			);
-		});
+	beforeEach(() => {
+		// mockReset: true (global config) clears connectToDaemon before each test.
+		// Re-setup here so DaemonIntelligenceProxy methods can resolve the client.
+		sharedMockClient = makeMockDaemonClient();
+		vi.mocked(connectToDaemon).mockResolvedValue(sharedMockClient as never);
+		vi.mocked(requireDaemon).mockResolvedValue(sharedMockClient as never);
 	});
 
-	describe("Intelligence facade methods", () => {
-		it("should provide access to validation pipeline", async () => {
-			await initializeWorkspace(testDir);
+	it("getContext delegates to daemon client.context.get", async () => {
+		const mockClient = sharedMockClient;
 
-			const intel = await getIntelligence(testDir);
+		const intel = await getIntelligence(WORKSPACE);
+		const result = await intel.getContext({ task: "fix bug", keywords: ["auth"] });
 
-			// Validate some code - should not throw
-			const result = await intel.checkPatterns('console.log("test");', "test.ts");
+		expect(mockClient.context.get).toHaveBeenCalledWith({
+			workspace: WORKSPACE,
+			task: "fix bug",
+			keywords: ["auth"],
+			files: undefined,
+		});
+		expect(result.patterns).toEqual([]);
+	});
 
-			expect(result).toBeDefined();
-			expect(result.overall).toBeDefined();
-			expect(typeof result.overall.passed).toBe("boolean");
+	it("validateCode delegates to daemon client.validation.comprehensive", async () => {
+		const mockClient = sharedMockClient;
+
+		const intel = await getIntelligence(WORKSPACE);
+		const result = await intel.validateCode("const x = 1;", "src/foo.ts");
+
+		expect(mockClient.validation.comprehensive).toHaveBeenCalledWith({
+			workspace: WORKSPACE,
+			filePath: "src/foo.ts",
+			code: "const x = 1;",
+		});
+		expect(result.passed).toBe(true);
+		expect(result.confidence).toBe(0.9);
+	});
+
+	it("reportViolation delegates to daemon client.violation.report", async () => {
+		const mockClient = sharedMockClient;
+
+		const intel = await getIntelligence(WORKSPACE);
+		const result = await intel.reportViolation({
+			type: "silent-catch",
+			file: "src/foo.ts",
+			message: "swallowed error",
+			reason: "copy-paste",
+			prevention: "always log in catch",
 		});
 
-		it("should provide access to learning system", async () => {
-			await initializeWorkspace(testDir);
+		expect(result.recorded).toBe(true);
+		expect(result.violationId).toBe("silent-catch:src/foo.ts");
+	});
 
-			const intel = await getIntelligence(testDir);
-
-			// Record a learning - should not throw
-			const result = await intel.recordLearning({
-				type: "pattern",
-				trigger: "test trigger",
-				action: "test action",
-				source: "test",
-			});
-
-			expect(result).toBeDefined();
-			expect(result.id).toBeDefined();
+	it("getLearningStats reflects total from daemon learning.list", async () => {
+		sharedMockClient.learning.list.mockResolvedValue({
+			learnings: [{ type: "pat", trigger: "t", action: "a" }],
+			total: 5,
 		});
 
-		it("should provide access to vitals system", async () => {
-			await initializeWorkspace(testDir);
+		const intel = await getIntelligence(WORKSPACE);
+		const stats = await intel.getLearningStats();
 
-			const intel = await getIntelligence(testDir);
+		expect(stats.totalLearnings).toBe(5);
+	});
 
-			// Get vitals for workspace
-			const vitals = intel.getVitals(testDir);
-
-			expect(vitals).toBeDefined();
-			// Vitals should have expected methods
-			expect(typeof vitals.current).toBe("function");
-		});
+	it("getStats is an alias for getLearningStats", async () => {
+		const intel = await getIntelligence(WORKSPACE);
+		const a = await intel.getLearningStats();
+		const b = await intel.getStats();
+		expect(a).toEqual(b);
 	});
 });

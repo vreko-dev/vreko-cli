@@ -1,8 +1,8 @@
 /**
  * Config Command
  *
- * Implements snap config get/set/path - Configuration management.
- * Manages both global (~/.snapback/) and local (.snapback/) config.
+ * Implements vr config get/set/path - Configuration management.
+ * Manages both global (~/.vreko/) and local (.vreko/) config.
  *
  * @see cli_ui_imp.md Phase 5
  */
@@ -13,14 +13,12 @@ import { Command } from "commander";
 import {
 	type GlobalConfig,
 	getGlobalConfig,
-	getGlobalDir,
 	getWorkspaceConfig,
-	getWorkspaceDir,
-	isSnapbackInitialized,
+	isVrekoInitialized,
 	saveGlobalConfig,
 	saveWorkspaceConfig,
 	type WorkspaceConfig,
-} from "../services/snapback-dir";
+} from "../services/vreko-dir";
 
 // =============================================================================
 // TYPES
@@ -55,8 +53,8 @@ const CONFIG_SCHEMA: ConfigSchema[] = [
 		key: "apiUrl",
 		scope: ["global"],
 		type: "string",
-		description: "SnapBack API URL",
-		default: "https://api.snapback.dev",
+		description: "Vreko API URL",
+		default: "https://api.vreko.dev",
 	},
 	{
 		key: "defaultWorkspace",
@@ -104,7 +102,7 @@ const CONFIG_SCHEMA: ConfigSchema[] = [
  * Create the config command
  */
 export function createConfigCommand(): Command {
-	const config = new Command("config").description("Manage SnapBack configuration");
+	const config = new Command("config").description("Manage Vreko configuration");
 
 	// List all config
 	config
@@ -118,7 +116,7 @@ export function createConfigCommand(): Command {
 				await listConfig(options);
 			} catch (error: unknown) {
 				const message = error instanceof Error ? error.message : String(error);
-				console.error(chalk.red("Error:"), message);
+				console.error(`✗ Error: ${message}`);
 				process.exit(1);
 			}
 		});
@@ -134,7 +132,7 @@ export function createConfigCommand(): Command {
 				await getConfigValue(key, options);
 			} catch (error: unknown) {
 				const message = error instanceof Error ? error.message : String(error);
-				console.error(chalk.red("Error:"), message);
+				console.error(`✗ Error: ${message}`);
 				process.exit(1);
 			}
 		});
@@ -150,7 +148,7 @@ export function createConfigCommand(): Command {
 				await setConfigValue(key, value, options);
 			} catch (error: unknown) {
 				const message = error instanceof Error ? error.message : String(error);
-				console.error(chalk.red("Error:"), message);
+				console.error(`✗ Error: ${message}`);
 				process.exit(1);
 			}
 		});
@@ -166,7 +164,7 @@ export function createConfigCommand(): Command {
 				await unsetConfigValue(key, options);
 			} catch (error: unknown) {
 				const message = error instanceof Error ? error.message : String(error);
-				console.error(chalk.red("Error:"), message);
+				console.error(`✗ Error: ${message}`);
 				process.exit(1);
 			}
 		});
@@ -207,35 +205,30 @@ async function listConfig(options: { global?: boolean; local?: boolean; json?: b
 		if (options.json) {
 			result.global = globalConfig || {};
 		} else {
-			console.log(chalk.cyan.bold("Global Configuration"));
-			console.log(chalk.gray(`Path: ${getGlobalDir()}/config.json`));
-			console.log();
-
 			if (globalConfig) {
+				console.log(chalk.cyan.bold("Global Configuration"));
+				console.log();
 				for (const [key, value] of Object.entries(globalConfig)) {
 					console.log(`  ${chalk.cyan(key)}: ${formatValue(value)}`);
 				}
 			} else {
 				console.log(chalk.gray("  (no global config set)"));
 			}
-			console.log();
 		}
 	}
 
 	// Get local config
 	if (!options.global) {
-		const hasWorkspace = await isSnapbackInitialized(cwd);
+		const hasWorkspace = await isVrekoInitialized(cwd);
 
 		if (hasWorkspace) {
 			const workspaceConfig = await getWorkspaceConfig(cwd);
 			if (options.json) {
 				result.local = workspaceConfig || {};
 			} else {
-				console.log(chalk.cyan.bold("Workspace Configuration"));
-				console.log(chalk.gray(`Path: ${getWorkspaceDir(cwd)}/config.json`));
-				console.log();
-
 				if (workspaceConfig) {
+					console.log(chalk.cyan.bold("Workspace Configuration"));
+					console.log();
 					for (const [key, value] of Object.entries(workspaceConfig)) {
 						console.log(`  ${chalk.cyan(key)}: ${formatValue(value)}`);
 					}
@@ -244,8 +237,8 @@ async function listConfig(options: { global?: boolean; local?: boolean; json?: b
 				}
 			}
 		} else if (!options.json) {
-			console.log(chalk.yellow("Not in a SnapBack workspace"));
-			console.log(chalk.gray("Run: snap init"));
+			console.log(chalk.yellow("Not in a Vreko workspace"));
+			console.log(chalk.gray("Run: vr init"));
 		}
 	}
 
@@ -263,7 +256,7 @@ async function getConfigValue(key: string, options: { global?: boolean; local?: 
 
 	if (!schema) {
 		console.log(chalk.yellow(`Unknown config key: ${key}`));
-		console.log(chalk.gray("Run 'snap config keys' to see available keys"));
+		console.log(chalk.gray("Run 'vr config keys' to see available keys"));
 		return;
 	}
 
@@ -276,9 +269,9 @@ async function getConfigValue(key: string, options: { global?: boolean; local?: 
 		const config = await getGlobalConfig();
 		value = config?.[key as GlobalConfigKey];
 	} else {
-		if (!(await isSnapbackInitialized(cwd))) {
-			console.log(chalk.yellow("Not in a SnapBack workspace"));
-			return;
+		if (!(await isVrekoInitialized(cwd))) {
+			console.error("Vreko not initialized in this workspace. Run 'vreko init' first.");
+			process.exit(1);
 		}
 		const config = await getWorkspaceConfig(cwd);
 		value = config?.[key as WorkspaceConfigKey];
@@ -308,7 +301,7 @@ async function setConfigValue(
 
 	if (!schema) {
 		console.log(chalk.yellow(`Unknown config key: ${key}`));
-		console.log(chalk.gray("Run 'snap config keys' to see available keys"));
+		console.log(chalk.gray("Run 'vr config keys' to see available keys"));
 		return;
 	}
 
@@ -322,12 +315,10 @@ async function setConfigValue(
 		const config = (await getGlobalConfig()) || {};
 		(config as Record<string, unknown>)[key] = parsedValue;
 		await saveGlobalConfig(config);
-		console.log(chalk.green("✓"), `Set ${chalk.cyan(key)} = ${formatValue(parsedValue)} (global)`);
 	} else {
-		if (!(await isSnapbackInitialized(cwd))) {
-			console.log(chalk.yellow("Not in a SnapBack workspace"));
-			console.log(chalk.gray("Run: snap init"));
-			return;
+		if (!(await isVrekoInitialized(cwd))) {
+			console.error("Vreko not initialized in this workspace. Run 'vreko init' first.");
+			process.exit(1);
 		}
 
 		const config = (await getWorkspaceConfig(cwd)) || {
@@ -337,8 +328,9 @@ async function setConfigValue(
 		(config as unknown as Record<string, unknown>)[key] = parsedValue;
 		config.updatedAt = new Date().toISOString();
 		await saveWorkspaceConfig(config, cwd);
-		console.log(chalk.green("✓"), `Set ${chalk.cyan(key)} = ${formatValue(parsedValue)} (workspace)`);
 	}
+
+	console.log(chalk.green("✓"), `${key} = ${formatValue(parsedValue)}`);
 }
 
 /**
@@ -350,6 +342,7 @@ async function unsetConfigValue(key: string, options: { global?: boolean; local?
 
 	if (!schema) {
 		console.log(chalk.yellow(`Unknown config key: ${key}`));
+		console.log(chalk.gray("Run 'vr config keys' to see available keys"));
 		return;
 	}
 
@@ -360,14 +353,14 @@ async function unsetConfigValue(key: string, options: { global?: boolean; local?
 		if (config && key in config) {
 			delete (config as Record<string, unknown>)[key];
 			await saveGlobalConfig(config);
-			console.log(chalk.green("✓"), `Unset ${chalk.cyan(key)} (global)`);
+			console.log(chalk.green("✓"), `Unset ${key} from global config`);
 		} else {
-			console.log(chalk.gray(`${key} was not set`));
+			console.log(chalk.gray(`${key} is not set in global config`));
 		}
 	} else {
-		if (!(await isSnapbackInitialized(cwd))) {
-			console.log(chalk.yellow("Not in a SnapBack workspace"));
-			return;
+		if (!(await isVrekoInitialized(cwd))) {
+			console.error("Vreko not initialized in this workspace. Run 'vreko init' first.");
+			process.exit(1);
 		}
 
 		const config = await getWorkspaceConfig(cwd);
@@ -375,9 +368,9 @@ async function unsetConfigValue(key: string, options: { global?: boolean; local?
 			delete (config as unknown as Record<string, unknown>)[key];
 			config.updatedAt = new Date().toISOString();
 			await saveWorkspaceConfig(config, cwd);
-			console.log(chalk.green("✓"), `Unset ${chalk.cyan(key)} (workspace)`);
+			console.log(chalk.green("✓"), `Unset ${key} from workspace config`);
 		} else {
-			console.log(chalk.gray(`${key} was not set`));
+			console.log(chalk.gray(`${key} is not set in workspace config`));
 		}
 	}
 }
@@ -387,24 +380,13 @@ async function unsetConfigValue(key: string, options: { global?: boolean; local?
  */
 async function showConfigPaths(): Promise<void> {
 	const cwd = process.cwd();
-
 	console.log(chalk.cyan.bold("Configuration Paths"));
 	console.log();
-
-	console.log(chalk.bold("Global:"));
-	console.log(`  ${chalk.cyan("Directory:")}  ${getGlobalDir()}`);
-	console.log(`  ${chalk.cyan("Config:")}     ${getGlobalDir()}/config.json`);
-	console.log(`  ${chalk.cyan("Credentials:")} ${getGlobalDir()}/credentials.json`);
-	console.log();
-
-	console.log(chalk.bold("Workspace:"));
-	if (await isSnapbackInitialized(cwd)) {
-		console.log(`  ${chalk.cyan("Directory:")}  ${getWorkspaceDir(cwd)}`);
-		console.log(`  ${chalk.cyan("Config:")}     ${getWorkspaceDir(cwd)}/config.json`);
-		console.log(`  ${chalk.cyan("Vitals:")}     ${getWorkspaceDir(cwd)}/vitals.json`);
-		console.log(`  ${chalk.cyan("Protected:")}  ${getWorkspaceDir(cwd)}/protected.json`);
+	console.log(`  ${chalk.cyan("Global")}: ~/.vreko/config.json`);
+	if (await isVrekoInitialized(cwd)) {
+		console.log(`  ${chalk.cyan("Workspace")}: ${cwd}/.vreko/config.json`);
 	} else {
-		console.log(chalk.gray("  Not in a SnapBack workspace"));
+		console.log(chalk.gray("  Workspace: (not initialized)"));
 	}
 }
 
@@ -412,23 +394,21 @@ async function showConfigPaths(): Promise<void> {
  * Show available config keys
  */
 function showConfigKeys(): void {
-	console.log(chalk.cyan.bold("Available Configuration Keys"));
+	console.log(chalk.cyan.bold("Global Keys"));
 	console.log();
-
-	console.log(chalk.bold("Global (--global):"));
 	for (const schema of CONFIG_SCHEMA.filter((s) => s.scope.includes("global"))) {
-		console.log(`  ${chalk.cyan(schema.key.padEnd(20))} ${chalk.gray(schema.description)}`);
+		console.log(`  ${chalk.cyan(schema.key)} (${schema.type}): ${schema.description}`);
 		if (schema.default !== undefined) {
-			console.log(`  ${"".padEnd(20)} ${chalk.gray(`Default: ${schema.default}`)}`);
+			console.log(`    ${chalk.gray(`default: ${schema.default}`)}`);
 		}
 	}
 	console.log();
-
-	console.log(chalk.bold("Workspace (--local):"));
+	console.log(chalk.cyan.bold("Workspace Keys"));
+	console.log();
 	for (const schema of CONFIG_SCHEMA.filter((s) => s.scope.includes("local"))) {
-		console.log(`  ${chalk.cyan(schema.key.padEnd(20))} ${chalk.gray(schema.description)}`);
+		console.log(`  ${chalk.cyan(schema.key)} (${schema.type}): ${schema.description}`);
 		if (schema.default !== undefined) {
-			console.log(`  ${"".padEnd(20)} ${chalk.gray(`Default: ${schema.default}`)}`);
+			console.log(`    ${chalk.gray(`default: ${schema.default}`)}`);
 		}
 	}
 }

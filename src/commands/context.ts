@@ -1,7 +1,7 @@
 /**
  * Context Command
  *
- * @fileoverview Implements `snap context` - Get relevant context before starting work.
+ * @fileoverview Implements `vr context` - Get relevant context before starting work.
  * This is the CLI equivalent of the MCP's `codebase.start_task()` tool.
  *
  * ## Purpose
@@ -17,19 +17,19 @@
  *
  * ```bash
  * # Get context for a task
- * snap context "add user authentication"
+ * vr context "add user authentication"
  *
  * # Include files you plan to modify
- * snap context "refactor auth" --files src/auth.ts src/session.ts
+ * vr context "refactor auth" --files src/auth.ts src/session.ts
  *
  * # Search with specific keywords
- * snap context --keywords auth session jwt
+ * vr context --keywords auth session jwt
  *
  * # Machine-readable output
- * snap context "add auth" --json
+ * vr context "add auth" --json
  *
  * # With semantic search (slower, more accurate)
- * snap context "add auth" --semantic
+ * vr context "add auth" --semantic
  * ```
  *
  * ## Output Format
@@ -49,7 +49,7 @@
  * ┌──────────┬───────────────────────────┐
  * │ Trigger  │ Action                    │
  * ├──────────┼───────────────────────────┤
- * │ auth     │ Use @snapback/auth...     │
+ * │ auth     │ Use @vreko/auth...     │
  * └──────────┴───────────────────────────┘
  *
  * ⚠ Recent Violations (avoid these):
@@ -67,13 +67,10 @@
  * @module commands/context
  */
 
-import type { ContextResult } from "@snapback/intelligence";
 import chalk from "chalk";
 import { Command } from "commander";
 
 import { getIntelligence, getIntelligenceWithSemantic } from "../services/intelligence-service";
-import { displayBox } from "../utils/display";
-import { createContextTable } from "../utils/tables";
 
 // =============================================================================
 // TYPES
@@ -95,6 +92,18 @@ interface ContextOptions {
 	semantic?: boolean;
 }
 
+/**
+ * Context result from service (simplified format)
+ *
+ * @internal
+ */
+interface DaemonContextResult {
+	patterns: Array<{ name: string; description: string }>;
+	constraints: Array<{ domain: string; name: string; value: string | number; description: string }>;
+	learnings: Array<{ type: string; trigger: string; action: string; relevanceScore: number }>;
+	files: string[];
+}
+
 // =============================================================================
 // COMMAND DEFINITION
 // =============================================================================
@@ -108,14 +117,14 @@ interface ContextOptions {
  * ## Implementation Notes for LLM Agents
  *
  * 1. This command is the CLI equivalent of MCP's `start_task` tool
- * 2. It uses the Intelligence facade from @snapback/intelligence
+ * 2. It uses the Intelligence facade from @vreko/intelligence
  * 3. Display utilities should be imported from ../utils/display
  * 4. Table utilities should be imported from ../utils/tables
  *
  * ## Error Handling
  *
  * Handle these cases:
- * - Workspace not initialized → Show "Run: snap init"
+ * - Workspace not initialized → Show "Run: vr init"
  * - No task or keywords provided → Show usage hint
  * - Intelligence errors → Show error message, exit 1
  *
@@ -222,12 +231,8 @@ async function handleContextCommand(task: string | undefined, options: ContextOp
 		const message = error instanceof Error ? error.message : String(error);
 
 		if (message.includes("not initialized")) {
-			console.log(chalk.yellow("SnapBack not initialized in this workspace"));
-			console.log(chalk.gray("Run: snap init"));
 			process.exit(1);
 		}
-
-		console.error(chalk.red("Error:"), message);
 		process.exit(1);
 	}
 }
@@ -242,67 +247,42 @@ async function handleContextCommand(task: string | undefined, options: ContextOp
  * @param result - Context result from Intelligence
  * @param usedSemantic - Whether semantic search was used
  *
- * @remarks
- * ## Display Hierarchy
- *
- * 1. Summary box (always shown)
- *    - Shows counts of rules, patterns, learnings, violations
- *    - If semantic used, shows compression ratio
- *
- * 2. Learnings table (if any learnings found)
- *    - Uses cli-table3 via createContextTable()
- *    - Shows trigger and action columns
- *
- * 3. Violations list (if any violations found)
- *    - Plain text with chalk styling
- *    - Shows type, message, and prevention tip
- *
- * 4. Tip (always shown)
- *    - Reminds user to validate before committing
- *
  * @internal
  */
-function displayContextResults(result: ContextResult, usedSemantic?: boolean): void {
+function displayContextResults(result: DaemonContextResult, usedSemantic?: boolean): void {
 	// PART 1: Summary box
 	const summaryContent = formatContextSummary(result, usedSemantic);
-
-	console.log(
-		displayBox({
-			title: "📋 Context Loaded",
-			content: summaryContent,
-			type: "info",
-		}),
-	);
-
-	// PART 2: Learnings table
-	if (result.relevantLearnings && result.relevantLearnings.length > 0) {
-		console.log();
-		console.log(chalk.cyan("Relevant Learnings:"));
-		console.log(createContextTable(result.relevantLearnings));
+	if (summaryContent) {
+		console.log(summaryContent);
 	}
 
-	// PART 3: Violations to avoid
-	if (result.recentViolations && result.recentViolations.length > 0) {
-		console.log();
-		console.log(chalk.yellow("⚠ Recent Violations (avoid these):"));
-
-		// Show up to 3 violations to avoid overwhelming output
-		for (const violation of result.recentViolations.slice(0, 3)) {
-			console.log(chalk.gray(`  • ${violation.type}: ${violation.message}`));
-			if (violation.prevention) {
-				console.log(chalk.green(`    Fix: ${violation.prevention}`));
+	// PART 2: Learnings
+	if (result.learnings && result.learnings.length > 0) {
+		console.log("\nLearnings:");
+		for (const learning of result.learnings.slice(0, 5)) {
+			let content: string;
+			if (typeof learning === "string") {
+				content = learning;
+			} else {
+				const l = learning as { trigger?: string; action?: string; content?: string };
+				content = l.trigger && l.action ? `${l.trigger} → ${l.action}` : (l.content ?? String(learning));
 			}
+			console.log(`  • ${content.slice(0, 100)}${content.length > 100 ? "..." : ""}`);
 		}
-
-		// Hint if there are more
-		if (result.recentViolations.length > 3) {
-			console.log(chalk.gray(`  ... and ${result.recentViolations.length - 3} more`));
+		if (result.learnings.length > 5) {
+			console.log(`  … and ${result.learnings.length - 5} more`);
 		}
 	}
 
-	// PART 4: Tip
-	console.log();
-	console.log(chalk.gray("Tip: Run 'snap validate <file>' before committing"));
+	// PART 3: Patterns
+	if (result.patterns && result.patterns.length > 0) {
+		console.log("\nPatterns:");
+		for (const pattern of result.patterns.slice(0, 3)) {
+			const text =
+				typeof pattern === "string" ? pattern : ((pattern as { pattern?: string }).pattern ?? String(pattern));
+			console.log(`  • ${text}`);
+		}
+	}
 }
 
 /**
@@ -312,46 +292,34 @@ function displayContextResults(result: ContextResult, usedSemantic?: boolean): v
  * @param usedSemantic - Whether semantic search was used
  * @returns Formatted string for box content
  *
- * @remarks
- * Creates a multi-line summary showing:
- * - Number of hard rules (from hardRules string)
- * - Number of patterns (from patterns string)
- * - Number of relevant learnings
- * - Number of violations to avoid
- * - Semantic compression ratio (if used)
- *
  * @internal
  */
-function formatContextSummary(result: ContextResult, usedSemantic?: boolean): string {
+function formatContextSummary(result: DaemonContextResult, usedSemantic?: boolean): string {
 	const parts: string[] = [];
 
-	// Count hard rules (lines in hardRules string that start with ##)
-	if (result.hardRules) {
-		const ruleCount = (result.hardRules.match(/^##/gm) || []).length || "loaded";
-		parts.push(`${chalk.bold("Hard Rules:")} ${ruleCount} constraints`);
+	// Count patterns
+	if (result.patterns?.length) {
+		parts.push(`${chalk.bold("Patterns:")} ${result.patterns.length} found`);
 	}
 
-	// Count patterns (non-empty lines in patterns string)
-	if (result.patterns) {
-		const patternCount = result.patterns.split("\n").filter(Boolean).length;
-		parts.push(`${chalk.bold("Patterns:")} ${patternCount} patterns`);
+	// Count constraints
+	if (result.constraints?.length) {
+		parts.push(`${chalk.bold("Constraints:")} ${result.constraints.length} rules`);
 	}
 
 	// Count learnings
-	if (result.relevantLearnings?.length) {
-		parts.push(`${chalk.bold("Learnings:")} ${result.relevantLearnings.length} relevant`);
+	if (result.learnings?.length) {
+		parts.push(`${chalk.bold("Learnings:")} ${result.learnings.length} relevant`);
 	}
 
-	// Count violations
-	if (result.recentViolations?.length) {
-		parts.push(`${chalk.bold("Violations:")} ${result.recentViolations.length} to avoid`);
+	// Count files
+	if (result.files?.length) {
+		parts.push(`${chalk.bold("Files:")} ${result.files.length} indexed`);
 	}
 
 	// Semantic search info
-	if (usedSemantic && result.semanticContext) {
-		parts.push(
-			`${chalk.bold("Semantic:")} ${result.semanticContext.sections} sections (${result.semanticContext.compression} compression)`,
-		);
+	if (usedSemantic) {
+		parts.push(`${chalk.bold("Semantic:")} enabled`);
 	}
 
 	// If no context found, show a helpful message

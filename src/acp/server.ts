@@ -224,7 +224,7 @@ export class ACPServer extends EventEmitter {
 
 		return {
 			serverInfo: {
-				name: "snapback",
+				name: "vreko",
 				version: this.version,
 			},
 			capabilities: {

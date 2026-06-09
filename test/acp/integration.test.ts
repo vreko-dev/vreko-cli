@@ -8,16 +8,16 @@ import { PassThrough } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock problematic infrastructure imports that fail in test environment
-vi.mock("@snapback/infrastructure/files", () => ({
+vi.mock("@vreko/infrastructure/files", () => ({
 	makeWatcher: vi.fn(),
 }));
 
-vi.mock("@snapback/infrastructure/cache", () => ({
+vi.mock("@vreko/infrastructure/cache", () => ({
 	createCacheKey: vi.fn(),
 	memoryCache: { get: vi.fn(), set: vi.fn() },
 }));
 
-vi.mock("@snapback/infrastructure/resiliency", () => ({
+vi.mock("@vreko/infrastructure/resiliency", () => ({
 	withBreaker: vi.fn((fn: () => unknown) => fn),
 	withRetry: vi.fn((fn: () => unknown) => fn),
 	getCircuitBreakerState: vi.fn(() => "closed"),
@@ -98,7 +98,7 @@ describe("ACPServer Integration", () => {
 				id: 1,
 				result: {
 					serverInfo: {
-						name: "snapback",
+						name: "vreko",
 					},
 					capabilities: {
 						sessions: true,

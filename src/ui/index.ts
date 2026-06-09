@@ -7,7 +7,13 @@
  */
 
 // =============================================================================
-// BRANDING
+// BRANDING  -  React/Ink components
+// =============================================================================
+
+export { CeremonyFooter, VrekoHeader } from "./brand";
+
+// =============================================================================
+// BRANDING  -  string/chalk utilities
 // =============================================================================
 
 export {
@@ -59,25 +65,85 @@ export {
 } from "./links";
 
 // =============================================================================
-// INTERACTIVE PROMPTS
+// THEME & BRAND COLORS
 // =============================================================================
 
 export {
-	type ConfirmOptions,
-	confirm,
-	confirmDangerous,
-	type DryRunChange,
-	dryRunPreview,
-	input,
-	type MultiStepOptions,
-	type ProgressOptions,
-	progressBar,
-	prompts,
-	type SelectOption,
-	type SelectOptions,
-	select,
-	spinner,
-	status,
-	stepProgress,
-	withSpinner,
-} from "./prompts";
+	BRAND_COLORS,
+	type BrandColor,
+	formatCommand,
+	formatLabelValue,
+	formatSectionHeader,
+	formatStep,
+	STATUS_ICONS,
+	type ThemeColor,
+	theme,
+} from "./theme";
+
+// =============================================================================
+// INTERACTIVE PROMPTS  -  Modern @clack/prompts based
+// =============================================================================
+
+export {
+	type ClackSelectOption,
+	clackConfirm,
+	clackConfirm as confirm,
+	clackGroup,
+	clackInput,
+	clackInput as input,
+	clackIntro,
+	clackLog,
+	clackNote,
+	clackOutro,
+	clackSelect,
+	clackSelect as select,
+	clackSpinner,
+	clackSpinner as spinner,
+} from "./prompts-clack";
+
+// Note: SelectOption type available via ClackSelectOption
+
+// Note: status, progressBar, stepProgress moved to theme module
+// Note: prompts namespace removed  -  import functions directly
+
+// =============================================================================
+// TUI GUARDS
+// =============================================================================
+
+export {
+	detectCapabilities,
+	isInteractive,
+	supportsColor,
+	TerminalCapabilities,
+	termWidth,
+	visual,
+} from "./guards";
+
+// =============================================================================
+// RISK COLORS & SIGNAL ICONS
+// =============================================================================
+
+export {
+	riskColor,
+	riskColors,
+	signalColors,
+	signalIcons,
+} from "./colors";
+
+// =============================================================================
+// VIEW CONTRACTS
+// =============================================================================
+
+export type {
+	GaugeStage as GaugeStageType,
+	PulseEvent as PulseEventType,
+	StatusViewData as StatusViewDataType,
+	WatchEvent as WatchEventType,
+} from "./contracts";
+export {
+	GaugeStage,
+	PulseEvent,
+	StatusViewData,
+	VIEW_DATA_SOURCES,
+	WatchEvent,
+} from "./contracts";

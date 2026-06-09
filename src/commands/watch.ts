@@ -1,13 +1,13 @@
 /**
  * Watch Command
  *
- * Implements snap watch - Continuous file watching daemon for behavioral learning.
+ * Implements vr watch - Continuous file watching service for behavioral learning.
  *
  * Usage:
- *   snap watch              # Start watching (foreground)
- *   snap watch --verbose    # With detailed logging
- *   snap watch stop         # Not implemented yet (uses Ctrl+C)
- *   snap watch status       # Show watcher status
+ *   vr watch              # Start watching (foreground)
+ *   vr watch --verbose    # With detailed logging
+ *   vr watch stop         # Not implemented yet (uses Ctrl+C)
+ *   vr watch status       # Show watcher status
  *
  * @see implementation_plan.md - behavioral learning
  * @see the_vision.md - "learnFromBehavior" concept
@@ -16,7 +16,7 @@
 import chalk from "chalk";
 import { Command } from "commander";
 
-import { isSnapbackInitialized } from "../services/snapback-dir";
+import { isVrekoInitialized } from "../services/vreko-dir";
 import { analyzeBehavioralSignals, createWatcher, getBehavioralSignals, type WatcherStats } from "../services/watcher";
 
 // =============================================================================
@@ -36,15 +36,10 @@ export function createWatchCommand(): Command {
 
 			try {
 				// Check if initialized
-				if (!(await isSnapbackInitialized(cwd))) {
-					console.log(chalk.yellow("SnapBack not initialized in this workspace"));
-					console.log(chalk.gray("Run: snap init"));
+				if (!(await isVrekoInitialized(cwd))) {
+					console.error("Not initialized. Run `vreko init` first.");
 					process.exit(1);
 				}
-
-				console.log(chalk.cyan("SnapBack Watch"));
-				console.log(chalk.gray("Continuous behavioral learning daemon"));
-				console.log();
 
 				// Create watcher
 				const watcher = createWatcher({
@@ -54,10 +49,8 @@ export function createWatchCommand(): Command {
 				});
 
 				// Set up event handlers
-				watcher.on("ready", (stats: WatcherStats) => {
-					console.log(chalk.green("✓"), `Watching ${stats.filesWatched} files`);
-					console.log(chalk.gray("  Press Ctrl+C to stop"));
-					console.log();
+				watcher.on("ready", (_stats: WatcherStats) => {
+					console.log("Watching for changes... (Ctrl+C to stop)");
 				});
 
 				watcher.on(
@@ -68,56 +61,48 @@ export function createWatchCommand(): Command {
 							: meta.isRisky
 								? chalk.yellow("●")
 								: chalk.blue("●");
-						console.log(`${icon} ${chalk.dim("changed:")} ${path}`);
 
+						console.log(`${icon} ${path}`);
 						if (meta.isCritical && meta.changeCount === 1) {
-							console.log(chalk.yellow(`  → Consider: snap protect add "${path}"`));
+							console.log(`  ${chalk.red("Critical change detected  -  snapshot recommended")}`);
 						}
 					},
 				);
 
 				watcher.on("add", (path: string) => {
-					console.log(`${chalk.green("+")} ${chalk.dim("added:")} ${path}`);
+					console.log(`${chalk.green("+")} ${path}`);
 				});
 
 				watcher.on("unlink", (path: string) => {
-					console.log(`${chalk.red("-")} ${chalk.dim("deleted:")} ${path}`);
+					console.log(`${chalk.red("-")} ${path}`);
 				});
 
 				watcher.on("signal", (signal: { path: string; suggestion?: string }) => {
 					if (signal.suggestion) {
-						console.log(chalk.yellow("💡"), signal.suggestion);
+						console.log(`  ${chalk.cyan("→")} ${signal.suggestion}`);
 					}
 				});
 
 				watcher.on("pattern", (pattern: { type: string; message: string }) => {
 					if (pattern.type === "PROMOTION_READY") {
-						console.log(chalk.magenta("📊"), pattern.message);
-						console.log(chalk.gray("   Run: snap patterns promote"));
+						console.log(`  ${chalk.green("★")} Pattern ready: ${pattern.message}`);
 					} else if (pattern.type === "FREQUENTLY_CHANGED") {
-						console.log(chalk.yellow("📈"), pattern.message);
+						console.log(`  ${chalk.yellow("↺")} Frequently changed: ${pattern.message}`);
 					}
 				});
 
 				watcher.on("error", (error: Error) => {
-					console.error(chalk.red("Error:"), error.message);
+					console.error(`✗ Watcher error: ${error.message}`);
 				});
 
 				// Handle graceful shutdown
 				const shutdown = async () => {
-					console.log();
-					console.log(chalk.gray("Stopping watcher..."));
 					await watcher.stop();
 
 					const stats = watcher.getStats();
-					console.log();
-					console.log(chalk.cyan("Session Summary:"));
-					console.log(`  Signals recorded: ${stats.signalsRecorded}`);
-					console.log(`  Patterns detected: ${stats.patternsDetected}`);
 
 					if (stats.signalsRecorded > 0) {
-						console.log();
-						console.log(chalk.gray("Analyze with: snap watch analyze"));
+						console.log(`\nSession summary: ${stats.signalsRecorded} signal(s) recorded`);
 					}
 
 					process.exit(0);
@@ -129,11 +114,13 @@ export function createWatchCommand(): Command {
 				// Start watching
 				await watcher.start();
 
-				// Keep process alive
-				await new Promise(() => {});
+				// Keep process alive indefinitely
+				await new Promise<never>(() => {
+					// This promise never resolves, keeping the watcher running
+				});
 			} catch (error: unknown) {
 				const message = error instanceof Error ? error.message : String(error);
-				console.error(chalk.red("Error:"), message);
+				console.error(`✗ Watch error: ${message}`);
 				process.exit(1);
 			}
 		});
@@ -147,9 +134,7 @@ export function createWatchCommand(): Command {
 			const cwd = process.cwd();
 
 			try {
-				if (!(await isSnapbackInitialized(cwd))) {
-					console.log(chalk.yellow("SnapBack not initialized"));
-					console.log(chalk.gray("Run: snap init"));
+				if (!(await isVrekoInitialized(cwd))) {
 					process.exit(1);
 				}
 
@@ -188,34 +173,28 @@ export function createWatchCommand(): Command {
 					return;
 				}
 
-				console.log(chalk.cyan("Watcher Statistics:"));
-				console.log();
-				console.log(`  Total signals:     ${stats.totalSignals}`);
-				console.log(`  Critical changes:  ${stats.criticalChanges}`);
-				console.log();
-
+				console.log(`Total signals: ${stats.totalSignals}`);
+				console.log(`Critical:      ${stats.criticalChanges}`);
 				if (Object.keys(stats.byType).length > 0) {
-					console.log(chalk.gray("By Type:"));
+					console.log("By type:");
 					for (const [type, count] of Object.entries(stats.byType)) {
-						console.log(`  ${type}: ${count}`);
+						console.log(`  ${type.padEnd(20)} ${count}`);
 					}
-					console.log();
 				}
 
 				if (stats.mostChanged.length > 0) {
-					console.log(chalk.gray("Most Changed Files:"));
+					console.log("Most changed:");
 					for (const { path, count } of stats.mostChanged) {
-						console.log(`  ${count}x  ${path}`);
+						console.log(`  ${String(count).padStart(3)}x  ${path}`);
 					}
 				}
 
 				if (stats.totalSignals === 0) {
-					console.log(chalk.gray("No behavioral data yet."));
-					console.log(chalk.gray("Start watching: snap watch"));
+					console.log("No behavioral signals recorded yet. Start watching with `vreko watch`.");
 				}
 			} catch (error: unknown) {
 				const message = error instanceof Error ? error.message : String(error);
-				console.error(chalk.red("Error:"), message);
+				console.error(`✗ Error: ${message}`);
 				process.exit(1);
 			}
 		});
@@ -229,9 +208,7 @@ export function createWatchCommand(): Command {
 			const cwd = process.cwd();
 
 			try {
-				if (!(await isSnapbackInitialized(cwd))) {
-					console.log(chalk.yellow("SnapBack not initialized"));
-					console.log(chalk.gray("Run: snap init"));
+				if (!(await isVrekoInitialized(cwd))) {
 					process.exit(1);
 				}
 
@@ -243,24 +220,21 @@ export function createWatchCommand(): Command {
 				}
 
 				if (learnings.length === 0) {
-					console.log(chalk.yellow("No actionable patterns detected yet."));
-					console.log(chalk.gray("Continue using snap watch to collect more data."));
+					console.log("No learnings generated. More behavioral data is needed.");
 					return;
 				}
 
-				console.log(chalk.cyan(`Behavioral Insights (${learnings.length}):`));
-				console.log();
-
+				console.log(`Generated ${learnings.length} learning(s):`);
 				for (const learning of learnings) {
-					console.log(chalk.bold(`💡 ${learning.trigger}`));
-					console.log(`   ${learning.action}`);
-					console.log();
+					const text =
+						typeof learning === "string"
+							? learning
+							: ((learning as { content?: string }).content ?? String(learning));
+					console.log(`  • ${text}`);
 				}
-
-				console.log(chalk.gray('Record as learning: snap learn "trigger" "action"'));
 			} catch (error: unknown) {
 				const message = error instanceof Error ? error.message : String(error);
-				console.error(chalk.red("Error:"), message);
+				console.error(`✗ Error: ${message}`);
 				process.exit(1);
 			}
 		});

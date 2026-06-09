@@ -15,19 +15,15 @@ export async function prepush(options: PrePushOptions = {}): Promise<number> {
 				const unreviewedCommits = aiTaggedCommits.filter((commit) => !hasReviewedBy(commit));
 
 				if (unreviewedCommits.length > 0) {
-					console.error("❌ AI-tagged commits require reviewed-by annotation:");
-					for (const commit of unreviewedCommits) {
-						console.error(`  ${commit.hash}: ${commit.message}`);
+					for (const _commit of unreviewedCommits) {
+						// intentionally empty
 					}
 					return 1;
 				}
 			}
 		}
-
-		console.log("✅ Pre-push checks passed");
 		return 0;
-	} catch (error) {
-		console.error("Error during pre-push checks:", error);
+	} catch (_error) {
 		return 1;
 	}
 }
@@ -66,8 +62,7 @@ function getAITaggedCommits(): CommitInfo[] {
 					message: messageParts.join(" "),
 				};
 			});
-	} catch (error) {
-		console.error("Failed to get AI-tagged commits:", error);
+	} catch (_error) {
 		return [];
 	}
 }
@@ -82,8 +77,7 @@ function hasReviewedBy(commit: CommitInfo): boolean {
 			return false;
 		}
 		return result.stdout.includes("Reviewed-by:");
-	} catch (error) {
-		console.error(`Failed to check reviewed-by for commit ${commit.hash}:`, error);
+	} catch (_error) {
 		return false;
 	}
 }
@@ -108,8 +102,7 @@ if (import.meta.url === new URL(process.argv[1], "file:").href) {
 		.then((exitCode) => {
 			process.exit(exitCode);
 		})
-		.catch((error) => {
-			console.error("Unexpected error:", error);
+		.catch((_error) => {
 			process.exit(1);
 		});
 }

@@ -1,11 +1,12 @@
 {
-	"extends": "@snapback/tsconfig/cli",
+	"extends": "@vreko/tsconfig/cli",
 	"compilerOptions": {
 		"sourceMap": true,
 		"rootDir": "src",
 		"declaration": true,
-		"declarationMap": true
+		"declarationMap": true,
+		"jsx": "react-jsx"
 	},
-	"include": ["src/**/*.ts"],
+	"include": ["src/**/*.ts", "src/**/*.tsx"],
 	"exclude": ["node_modules", "dist", "build", "src/**/*.js"]
 }

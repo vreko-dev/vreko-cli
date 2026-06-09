@@ -9,7 +9,6 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import boxen from "boxen";
 import chalk from "chalk";
 import { Command } from "commander";
 
@@ -33,7 +32,7 @@ interface AliasDefinition {
 
 function getAliasPath(): string {
 	const homeDir = process.env.HOME || process.env.USERPROFILE || "";
-	return path.join(homeDir, ".snapback", "aliases.json");
+	return path.join(homeDir, ".vreko", "aliases.json");
 }
 
 function loadAliases(): AliasConfig {
@@ -98,7 +97,7 @@ function setAlias(name: string, command: string, description?: string): void {
 		console.log(chalk.green(`Created alias "${name}"`));
 	}
 
-	console.log(chalk.gray(`  snap ${name} → snap ${command}`));
+	console.log(chalk.gray(`  vr ${name} → vr ${command}`));
 }
 
 /**
@@ -127,7 +126,7 @@ function listAliases(): void {
 
 	if (aliases.length === 0) {
 		console.log(chalk.yellow("No aliases configured"));
-		console.log(chalk.gray("\nCreate one with: snap alias set <name> <command>"));
+		console.log(chalk.gray("\nCreate one with: vr alias set <name> <command>"));
 		return;
 	}
 
@@ -181,17 +180,11 @@ function showSuggestions(): void {
 
 	const lines: string[] = [];
 	for (const { name, command, description } of SUGGESTED_ALIASES) {
-		lines.push(`snap alias set ${name} "${command}"`);
+		lines.push(`vr alias set ${name} "${command}"`);
 		lines.push(chalk.gray(`  # ${description}`));
 	}
 
-	console.log(
-		boxen(lines.join("\n"), {
-			padding: 1,
-			borderColor: "cyan",
-			borderStyle: "round",
-		}),
-	);
+	console.log(lines.join("\n"));
 }
 
 // =============================================================================
@@ -201,14 +194,14 @@ function showSuggestions(): void {
 export function createAliasCommand(): Command {
 	const cmd = new Command("alias").description("Create shortcuts for common commands");
 
-	// snap alias list
+	// vr alias list
 	cmd.command("list")
 		.description("List all configured aliases")
 		.action(() => {
 			listAliases();
 		});
 
-	// snap alias set <name> <command>
+	// vr alias set <name> <command>
 	cmd.command("set <name> <command>")
 		.description("Create or update an alias")
 		.option("-d, --description <desc>", "Add a description")
@@ -216,14 +209,14 @@ export function createAliasCommand(): Command {
 			setAlias(name, command, options.description);
 		});
 
-	// snap alias delete <name>
+	// vr alias delete <name>
 	cmd.command("delete <name>")
 		.description("Delete an alias")
 		.action((name) => {
 			deleteAlias(name);
 		});
 
-	// snap alias suggest
+	// vr alias suggest
 	cmd.command("suggest")
 		.description("Show suggested aliases")
 		.action(() => {

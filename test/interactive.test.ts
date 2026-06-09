@@ -1,66 +1,92 @@
+/**
+ * Interactive Command Tests
+ *
+ * Smoke tests verifying the interactive command wires into the CLI.
+ * Uses @inquirer/prompts (not the old inquirer library).
+ */
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// Mock external dependencies
-const mockInquirer = {
-	prompt: vi.fn(),
-	registerPrompt: vi.fn(),
-};
-
-const mockOraInstance = {
-	start: vi.fn().mockReturnThis(),
-	succeed: vi.fn().mockReturnThis(),
-	fail: vi.fn().mockReturnThis(),
-};
-
-const mockOra = vi.fn(() => mockOraInstance);
-
-vi.mock("inquirer", () => ({
-	default: mockInquirer,
+// Mock @inquirer/prompts  -  the interactive command uses these
+vi.mock("@inquirer/prompts", () => ({
+	search: vi.fn().mockResolvedValue("exit"),
+	checkbox: vi.fn().mockResolvedValue([]),
+	confirm: vi.fn().mockResolvedValue(false),
+	input: vi.fn().mockResolvedValue(""),
 }));
 
+// Mock ora spinner
 vi.mock("ora", () => ({
-	default: mockOra,
+	default: vi.fn(() => ({
+		start: vi.fn().mockReturnThis(),
+		succeed: vi.fn().mockReturnThis(),
+		fail: vi.fn().mockReturnThis(),
+		stop: vi.fn().mockReturnThis(),
+	})),
 }));
 
-// Mock inquirer-file-tree-selection-prompt
-const mockFileTreeSelection = vi.fn();
+// Mock chalk  -  recursive Proxy so chalk.hex("#fff")("text") and chalk.bold("text") both work
+vi.mock("chalk", () => {
+	function makeChalkFn(lastArg?: string): unknown {
+		const fn = Object.assign((s: unknown) => makeChalkFn(String(s ?? "")), {
+			[Symbol.toPrimitive]: () => lastArg ?? "",
+			toString: () => lastArg ?? "",
+		});
+		return new Proxy(fn, {
+			get: (target, prop) => {
+				if (prop === Symbol.toPrimitive || prop === "toString") {
+					return target[prop as keyof typeof target];
+				}
+				return makeChalkFn(lastArg);
+			},
+			apply: (_target, _this, args) => makeChalkFn(String(args[0] ?? "")),
+		});
+	}
+	return { default: makeChalkFn() };
+});
 
-vi.mock("inquirer-file-tree-selection-prompt", () => ({
-	default: mockFileTreeSelection,
+// Mock risk-analysis (has fs dependencies)
+vi.mock("../src/services/risk-analysis.js", () => ({
+	analyzeFileRisk: vi.fn().mockResolvedValue({ riskScore: 0, signals: [] }),
+	getAllFiles: vi.fn().mockResolvedValue([]),
 }));
 
-// Mock fs for statSync
-const mockStatSync = vi.fn();
-
-vi.mock("node:fs", () => ({
-	statSync: mockStatSync,
+// Mock contracts storage
+vi.mock("@vreko/contracts/storage", () => ({
+	createSnapshotStorage: vi.fn().mockReturnValue({
+		list: vi.fn().mockResolvedValue([]),
+		create: vi.fn().mockResolvedValue({ id: "snap-1" }),
+	}),
 }));
 
-describe("CLI Interactive Mode Unit Tests", () => {
-	beforeEach(() => {
-		// Clear all mocks before each test
-		vi.clearAllMocks();
+// Suppress UI error display
+vi.mock("../src/ui/errors.js", () => ({
+	displaySmartError: vi.fn(),
+}));
+
+beforeEach(() => {
+	vi.clearAllMocks();
+});
+
+describe("interactive command", () => {
+	it("exports createInteractiveCommand function", async () => {
+		const { createInteractiveCommand } = await import("../src/commands/interactive.js");
+		expect(typeof createInteractiveCommand).toBe("function");
 	});
 
-	it("should have basic test structure", () => {
-		expect(true).toBe(true);
+	it("returns a Commander Command instance with name 'interactive'", async () => {
+		const { createInteractiveCommand } = await import("../src/commands/interactive.js");
+		const cmd = createInteractiveCommand();
+		expect(cmd.name()).toBe("interactive");
+		expect(typeof cmd.description).toBe("function");
 	});
+});
 
-	it("should define createCLI function", async () => {
-		// Import the CLI module
-		const { createCLI } = await import("../src/index");
-
-		// Check that createCLI function is defined
-		expect(typeof createCLI).toBe("function");
-	});
-
-	it("should create a program instance via createCLI", async () => {
-		// Import and call createCLI
-		const { createCLI } = await import("../src/index");
+describe("CLI integration", () => {
+	it("createCLI includes the interactive command", async () => {
+		const { createCLI } = await import("../src/index.js");
 		const program = await createCLI();
-
-		// Check that program is defined
-		expect(program).toBeDefined();
-		expect(typeof program.name).toBe("function");
+		const commands = program.commands.map((c) => c.name());
+		expect(commands).toContain("interactive");
 	});
 });

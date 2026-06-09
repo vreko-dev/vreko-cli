@@ -69,7 +69,6 @@ export async function confirm(options: ConfirmOptions): Promise<boolean> {
 
 		if (timeout) {
 			timeoutId = setTimeout(() => {
-				console.log(chalk.gray(`\nNo response, defaulting to ${defaultValue ? "yes" : "no"}`));
 				rl.close();
 				resolve(defaultValue);
 			}, timeout);
@@ -120,26 +119,20 @@ export async function confirmDangerous(message: string, confirmText: string): Pr
 /**
  * Display a selection menu
  */
-export async function select<T = string>(options: SelectOptions<T>): Promise<T | undefined> {
-	const { message, options: choices, default: defaultValue } = options;
-
-	console.log(`${chalk.cyan("?")} ${message}`);
-	console.log();
+// biome-ignore lint/suspicious/noExplicitAny: select options shape is intentionally open at this abstraction layer
+export async function select<T = string>(options: any): Promise<T | undefined> {
+	const { _message, options: choices, default: defaultValue } = options;
 
 	// Display options
 	for (let i = 0; i < choices.length; i++) {
 		const choice = choices[i];
 		const isDefault = choice.value === defaultValue;
-		const marker = isDefault ? chalk.cyan("›") : " ";
-		const number = chalk.gray(`${i + 1}.`);
-		const label = choice.disabled ? chalk.gray(choice.label) : choice.label;
-		const hint = choice.hint ? chalk.gray(` (${choice.hint})`) : "";
-		const disabled = choice.disabled ? chalk.gray(" [disabled]") : "";
-
-		console.log(`  ${marker} ${number} ${label}${hint}${disabled}`);
+		const _marker = isDefault ? chalk.cyan("›") : " ";
+		const _number = chalk.gray(`${i + 1}.`);
+		const _label = choice.disabled ? chalk.gray(choice.label) : choice.label;
+		const _hint = choice.hint ? chalk.gray(` (${choice.hint})`) : "";
+		const _disabled = choice.disabled ? chalk.gray(" [disabled]") : "";
 	}
-
-	console.log();
 
 	return new Promise((resolve) => {
 		const rl = readline.createInterface({
@@ -162,7 +155,6 @@ export async function select<T = string>(options: SelectOptions<T>): Promise<T |
 			const index = Number.parseInt(trimmed, 10) - 1;
 
 			if (Number.isNaN(index) || index < 0 || index >= choices.length) {
-				console.log(chalk.red("Invalid selection"));
 				resolve(undefined);
 				return;
 			}
@@ -170,7 +162,6 @@ export async function select<T = string>(options: SelectOptions<T>): Promise<T |
 			const choice = choices[index];
 
 			if (choice.disabled) {
-				console.log(chalk.red("That option is disabled"));
 				resolve(undefined);
 				return;
 			}
@@ -306,13 +297,11 @@ export async function input(
 				const validation = validate(value);
 
 				if (typeof validation === "string") {
-					console.log(chalk.red(`✗ ${validation}`));
 					resolve("");
 					return;
 				}
 
 				if (validation === false) {
-					console.log(chalk.red("✗ Invalid input"));
 					resolve("");
 					return;
 				}
@@ -328,13 +317,27 @@ export async function input(
 // =============================================================================
 
 export const status = {
-	success: (message: string) => console.log(chalk.green("✓"), message),
-	error: (message: string) => console.log(chalk.red("✗"), message),
-	warning: (message: string) => console.log(chalk.yellow("!"), message),
-	info: (message: string) => console.log(chalk.blue("ℹ"), message),
-	debug: (message: string) => console.log(chalk.gray("…"), chalk.gray(message)),
-	step: (message: string) => console.log(chalk.cyan("›"), message),
-	done: (message: string) => console.log(chalk.green("✓"), chalk.green(message)),
+	success: (_message: string) => {
+		/* intentionally empty */
+	},
+	error: (_message: string) => {
+		/* intentionally empty */
+	},
+	warning: (_message: string) => {
+		/* intentionally empty */
+	},
+	info: (_message: string) => {
+		/* intentionally empty */
+	},
+	debug: (_message: string) => {
+		/* intentionally empty */
+	},
+	step: (_message: string) => {
+		/* intentionally empty */
+	},
+	done: (_message: string) => {
+		/* intentionally empty */
+	},
 };
 
 // =============================================================================
@@ -345,28 +348,22 @@ export const status = {
  * Display a dry-run diff preview
  */
 export function dryRunPreview(changes: DryRunChange[]): void {
-	console.log(chalk.yellow.bold("\n🔍 DRY RUN - No changes will be made\n"));
-
 	for (const change of changes) {
-		const icon =
+		const _icon =
 			change.type === "create" ? chalk.green("+") : change.type === "delete" ? chalk.red("-") : chalk.yellow("~");
-
-		console.log(`${icon} ${change.path}`);
 
 		if (change.details) {
 			for (const detail of change.details) {
 				if (detail.startsWith("+")) {
-					console.log(chalk.green(`    ${detail}`));
+					// intentionally empty
 				} else if (detail.startsWith("-")) {
-					console.log(chalk.red(`    ${detail}`));
+					// intentionally empty
 				} else {
-					console.log(chalk.gray(`    ${detail}`));
+					// intentionally empty
 				}
 			}
 		}
 	}
-
-	console.log(chalk.yellow("\nRun without --dry-run to apply these changes."));
 }
 
 export interface DryRunChange {

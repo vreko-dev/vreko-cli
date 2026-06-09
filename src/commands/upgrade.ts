@@ -1,21 +1,19 @@
 /**
  * Upgrade Command
  *
- * Implements snap upgrade - Check for and install CLI updates.
+ * Implements vr upgrade - Check for and install CLI updates.
  * Self-updates the CLI to the latest version.
  *
  * @see cli_ui_imp.md Phase 6
  */
 
+// Version is inlined at build time by tsup's define option
+declare const __CLI_VERSION__: string;
+
 import { exec } from "node:child_process";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import { promisify } from "node:util";
-import chalk from "chalk";
 import { Command } from "commander";
 import ora from "ora";
-
-import { displayBox } from "../utils/display";
 
 const execAsync = promisify(exec);
 
@@ -23,7 +21,7 @@ const execAsync = promisify(exec);
 // CONSTANTS
 // =============================================================================
 
-const PACKAGE_NAME = "@snapback/cli";
+const PACKAGE_NAME = "@vreko/cli";
 const NPM_REGISTRY = "https://registry.npmjs.org";
 
 // =============================================================================
@@ -58,47 +56,30 @@ export function createUpgradeCommand(): Command {
 
 				spinner.stop();
 
-				// Display current status
-				console.log(
-					displayBox({
-						title: "📦 SnapBack CLI",
-						content: `Current: v${versionInfo.current}\nLatest:  v${versionInfo.latest}`,
-						type: versionInfo.updateAvailable ? "warning" : "success",
-					}),
-				);
-				console.log();
-
 				if (!versionInfo.updateAvailable && !options.force) {
-					console.log(chalk.green("✓"), "You're on the latest version!");
+					console.log(`✓ Already up to date (${versionInfo.current})`);
 					return;
 				}
 
 				if (options.check) {
 					if (versionInfo.updateAvailable) {
-						console.log(chalk.yellow("⚠"), "Update available!");
-						console.log(chalk.gray(`Run 'snap upgrade' to install v${versionInfo.latest}`));
+						console.log(`Update available: ${versionInfo.current} → ${versionInfo.latest}`);
+						console.log("Run: vr upgrade");
 					}
 					return;
 				}
 
 				// Proceed with upgrade
 				if (versionInfo.updateAvailable) {
-					console.log(chalk.cyan("→"), `Upgrading to v${versionInfo.latest}...`);
+					console.log(`Upgrading ${versionInfo.current} → ${versionInfo.latest}...`);
 				} else {
-					console.log(chalk.cyan("→"), "Reinstalling current version...");
+					console.log(`Reinstalling ${versionInfo.current}...`);
 				}
 
 				await performUpgrade(options.canary);
-
-				console.log();
-				console.log(chalk.green("✓"), "Upgrade complete!");
-				console.log(chalk.gray("Restart your terminal to use the new version."));
 			} catch (error: unknown) {
 				const message = error instanceof Error ? error.message : String(error);
-				console.error(chalk.red("Upgrade failed:"), message);
-				console.log();
-				console.log(chalk.gray("Manual upgrade:"));
-				console.log(chalk.gray(`  npm install -g ${PACKAGE_NAME}@latest`));
+				console.error(`✗ Upgrade failed: ${message}`);
 				process.exit(1);
 			}
 		});
@@ -112,28 +93,8 @@ export function createUpgradeCommand(): Command {
  * Get current and latest version info
  */
 async function getVersionInfo(canary = false): Promise<VersionInfo> {
-	// Get current version from package.json
-	let current = "0.0.0";
-	try {
-		const pkgPath = join(__dirname, "../../package.json");
-		const pkg = JSON.parse(await readFile(pkgPath, "utf-8"));
-		current = pkg.version;
-	} catch {
-		// Try alternative path
-		try {
-			const altPkgPath = join(__dirname, "../../../package.json");
-			const pkg = JSON.parse(await readFile(altPkgPath, "utf-8"));
-			current = pkg.version;
-		} catch {
-			// Fallback to npm view
-			try {
-				const { stdout } = await execAsync(`npm view ${PACKAGE_NAME} version`);
-				current = stdout.trim();
-			} catch {
-				// Keep default
-			}
-		}
-	}
+	// Get current version from build-time inlined constant
+	const current = __CLI_VERSION__;
 
 	// Get latest version from npm registry
 	let latest = current;
@@ -238,8 +199,8 @@ async function detectPackageManager(): Promise<"npm" | "pnpm" | "yarn" | "bun"> 
 	// Check for pnpm
 	try {
 		await execAsync("pnpm --version");
-		const { stdout } = await execAsync("pnpm list -g @snapback/cli 2>/dev/null || true");
-		if (stdout.includes("@snapback/cli")) {
+		const { stdout } = await execAsync("pnpm list -g @vreko/cli 2>/dev/null || true");
+		if (stdout.includes("@vreko/cli")) {
 			return "pnpm";
 		}
 	} catch {
@@ -250,7 +211,7 @@ async function detectPackageManager(): Promise<"npm" | "pnpm" | "yarn" | "bun"> 
 	try {
 		await execAsync("yarn --version");
 		const { stdout } = await execAsync("yarn global list 2>/dev/null || true");
-		if (stdout.includes("@snapback/cli")) {
+		if (stdout.includes("@vreko/cli")) {
 			return "yarn";
 		}
 	} catch {

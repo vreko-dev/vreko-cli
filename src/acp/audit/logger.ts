@@ -2,7 +2,7 @@
  * ACP Audit Logger
  *
  * Provides audit trail logging for ACP operations.
- * Logs are written to ~/.snapback/audit/acp.jsonl in JSON Lines format.
+ * Logs are written to ~/.vreko/audit/acp.jsonl in JSON Lines format.
  *
  * @module acp/audit/logger
  */
@@ -39,7 +39,7 @@ export class AuditLogger implements AuditLoggerInterface {
 	private initError: Error | null = null;
 
 	constructor(logPath?: string) {
-		this.logPath = logPath || path.join(os.homedir(), ".snapback", "audit", "acp.jsonl");
+		this.logPath = logPath || path.join(os.homedir(), ".vreko", "audit", "acp.jsonl");
 
 		try {
 			// Ensure directory exists

@@ -29,7 +29,7 @@ export const statusTools: ToolDefinition[] = [
 	},
 	{
 		name: "status.health",
-		description: "Get SnapBack system health status",
+		description: "Get Vreko system health status",
 		inputSchema: {
 			type: "object",
 			properties: {},
@@ -61,12 +61,12 @@ export const statusHandlers = {
 				};
 			}
 
-			// Try to read protection status from .snapback directory
+			// Try to read protection status from .vreko directory
 			const { existsSync, readFileSync } = await import("node:fs");
 			const { join } = await import("node:path");
 
-			const snapbackDir = join(context.workspacePath, ".snapback");
-			const isInitialized = existsSync(snapbackDir);
+			const vrekoDir = join(context.workspacePath, ".vreko");
+			const isInitialized = existsSync(vrekoDir);
 
 			if (!isInitialized) {
 				return {
@@ -76,7 +76,7 @@ export const statusHandlers = {
 							json: {
 								initialized: false,
 								protected: false,
-								message: "Workspace not initialized with SnapBack",
+								message: "Workspace not initialized with Vreko",
 							},
 						},
 					],
@@ -85,7 +85,7 @@ export const statusHandlers = {
 			}
 
 			// Check for protected files list
-			const protectedFilesPath = join(snapbackDir, "protected-files.json");
+			const protectedFilesPath = join(vrekoDir, "protected-files.json");
 			let protectedFiles: string[] = [];
 			if (existsSync(protectedFilesPath)) {
 				try {
@@ -96,7 +96,7 @@ export const statusHandlers = {
 			}
 
 			// Get snapshot count
-			const snapshotsDir = join(snapbackDir, "snapshots");
+			const snapshotsDir = join(vrekoDir, "snapshots");
 			let snapshotCount = 0;
 			if (existsSync(snapshotsDir)) {
 				const { readdirSync } = await import("node:fs");
@@ -153,8 +153,8 @@ export const statusHandlers = {
 			const { existsSync, statSync } = await import("node:fs");
 			const { platform, freemem, totalmem, uptime } = await import("node:os");
 
-			// Check if workspace has .snapback directory
-			const snapbackDir = context.workspacePath ? join(context.workspacePath, ".snapback") : null;
+			// Check if workspace has .vreko directory
+			const vrekoDir = context.workspacePath ? join(context.workspacePath, ".vreko") : null;
 
 			const storageInfo = {
 				initialized: false,
@@ -162,10 +162,10 @@ export const statusHandlers = {
 				totalSize: 0,
 			};
 
-			if (snapbackDir && existsSync(snapbackDir)) {
+			if (vrekoDir && existsSync(vrekoDir)) {
 				storageInfo.initialized = true;
 
-				const snapshotsDir = join(snapbackDir, "snapshots");
+				const snapshotsDir = join(vrekoDir, "snapshots");
 				if (existsSync(snapshotsDir)) {
 					const { readdirSync } = await import("node:fs");
 					const files = readdirSync(snapshotsDir);

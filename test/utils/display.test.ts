@@ -100,11 +100,11 @@ describe("displaySaveStory", () => {
 	it("should render save story with all fields", () => {
 		const result = displaySaveStory(8.5, ["file1.ts", "file2.ts"], "abc123def456");
 
-		expect(result).toContain("SnapBack just protected you");
+		expect(result).toContain("Vreko protected you.");
 		expect(result).toContain("8.5/10");
 		expect(result).toContain("2"); // file count
 		expect(result).toContain("abc123de"); // truncated ID
-		expect(result).toContain("snapback.dev/stories");
+		expect(result).toContain("vreko.dev/stories");
 	});
 
 	// Edge case (spec lines 260-263)
@@ -139,7 +139,7 @@ describe("displaySnapshotSuccess", () => {
 		expect(result).toContain("abc123de"); // truncated ID
 		expect(result).toContain("Test message");
 		expect(result).toContain("12 protected");
-		expect(result).toContain("SnapBack Protection Active");
+		expect(result).toContain("Vreko Protection Active");
 	});
 
 	// Edge case: no message

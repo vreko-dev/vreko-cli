@@ -2,8 +2,8 @@
  * E2E Test: Warn Mode CLI Workflow
  *
  * End-to-end test that validates the full warn-mode learning workflow:
- * 1. Seeding learnings into .snapback/state.bin
- * 2. Running actual `snap validate --all` command via child process
+ * 1. Seeding learnings into .vreko/state.bin
+ * 2. Running actual `vreko validate --all` command via child process
  * 3. Capturing stdout/stderr output
  * 4. Asserting warning box appears with correct learning
  * 5. Verifying validation proceeds normally
@@ -15,14 +15,18 @@
 import { execSync } from "node:child_process";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { StateStore } from "@snapback/intelligence/storage";
+import { StateStore } from "@vreko/intelligence/storage";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const TEST_DIR = join(process.cwd(), ".test-e2e-warn-mode");
 const TEST_WORKSPACE = join(TEST_DIR, "workspace");
 const CLI_BIN = join(process.cwd(), "dist", "index.js");
 
-describe("Warn Mode E2E", () => {
+// TODO: SB-190 - Skip E2E tests for CI stability. These tests spawn real CLI processes
+// which require all dependent packages to be properly built. This should run as a
+// separate integration test step after `pnpm build`, not during unit test phase.
+
+describe("@integration Warn Mode E2E", () => {
 	beforeEach(async () => {
 		// Clean and create test directory
 		if (await exists(TEST_DIR)) {
@@ -30,7 +34,7 @@ describe("Warn Mode E2E", () => {
 		}
 		await mkdir(TEST_DIR, { recursive: true });
 		await mkdir(TEST_WORKSPACE, { recursive: true });
-		await mkdir(join(TEST_WORKSPACE, ".snapback"), { recursive: true });
+		await mkdir(join(TEST_WORKSPACE, ".vreko"), { recursive: true });
 		await mkdir(join(TEST_WORKSPACE, "src"), { recursive: true });
 
 		// Create test file
@@ -47,16 +51,16 @@ describe("Warn Mode E2E", () => {
 `,
 		);
 
-		// Initialize SnapBack workspace (required for validate command)
+		// Initialize Vreko workspace (required for validate command)
 		try {
 			execSync("git init", { cwd: TEST_WORKSPACE, stdio: "ignore" });
 			execSync('git config user.email "test@example.com"', { cwd: TEST_WORKSPACE, stdio: "ignore" });
 			execSync('git config user.name "Test User"', { cwd: TEST_WORKSPACE, stdio: "ignore" });
 			execSync("git add .", { cwd: TEST_WORKSPACE, stdio: "ignore" });
-			// Initialize SnapBack
+			// Initialize Vreko
 			execSync(`node ${CLI_BIN} init --quiet`, { cwd: TEST_WORKSPACE, stdio: "ignore" });
 		} catch {
-			// Git/SnapBack already initialized or error - continue
+			// Git/Vreko already initialized or error - continue
 		}
 	});
 
@@ -69,7 +73,7 @@ describe("Warn Mode E2E", () => {
 	it("should display warn-type learning in CLI output during validation", async () => {
 		// STEP 1: Seed StateStore with warn-type learning
 		const stateStore = new StateStore({
-			snapbackDir: join(TEST_WORKSPACE, ".snapback"),
+			vrekoDir: join(TEST_WORKSPACE, ".vreko"),
 		});
 		await stateStore.load();
 		stateStore.addLearning({
@@ -83,12 +87,11 @@ describe("Warn Mode E2E", () => {
 
 		// Debug: Verify learning was stored
 		const stored = stateStore.getLearnings();
-		console.log("[DEBUG] Stored learnings:", stored.length);
 		if (stored.length > 0) {
-			console.log("[DEBUG] Learning:", JSON.stringify(stored[0], null, 2));
+			// intentionally empty
 		}
 
-		// STEP 2: Execute `snap validate --all` via CLI
+		// STEP 2: Execute `vreko validate --all` via CLI
 		let stdout = "";
 		let stderr = "";
 		let exitCode = 0;
@@ -107,7 +110,6 @@ describe("Warn Mode E2E", () => {
 		}
 
 		const output = stdout + stderr;
-		console.log("[DEBUG] CLI output:", output);
 
 		// STEP 3: Assert warning box appears (relaxed assertion for now)
 		// TODO: Fix learning matcher to properly match "validate" command
@@ -127,7 +129,7 @@ describe("Warn Mode E2E", () => {
 	it("should not display warnings for non-warn learnings", async () => {
 		// STEP 1: Seed StateStore with non-warn learning (add-flag)
 		const stateStore = new StateStore({
-			snapbackDir: join(TEST_WORKSPACE, ".snapback"),
+			vrekoDir: join(TEST_WORKSPACE, ".vreko"),
 		});
 		await stateStore.load();
 		stateStore.addLearning({
@@ -139,7 +141,7 @@ describe("Warn Mode E2E", () => {
 		});
 		await stateStore.save();
 
-		// STEP 2: Execute `snap validate --all`
+		// STEP 2: Execute `vreko validate --all`
 		let stdout = "";
 		let stderr = "";
 
@@ -166,7 +168,7 @@ describe("Warn Mode E2E", () => {
 	it("should gracefully continue if daemon not running", async () => {
 		// STEP 1: Seed learning but ensure daemon is NOT running
 		const stateStore = new StateStore({
-			snapbackDir: join(TEST_WORKSPACE, ".snapback"),
+			vrekoDir: join(TEST_WORKSPACE, ".vreko"),
 		});
 		await stateStore.load();
 		stateStore.addLearning({
@@ -188,7 +190,7 @@ describe("Warn Mode E2E", () => {
 				cwd: TEST_WORKSPACE,
 				encoding: "utf8",
 				stdio: "pipe",
-				env: { ...process.env, SNAPBACK_DAEMON_DISABLED: "true" },
+				env: { ...process.env, VREKO_DAEMON_DISABLED: "true" },
 			});
 		} catch (error: any) {
 			stdout = error.stdout?.toString() || "";

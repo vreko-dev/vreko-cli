@@ -59,8 +59,7 @@ export class ProgressTracker {
 				spinner: "dots",
 			}).start();
 		} else {
-			// Non-TTY: just log start
-			console.log(`${this.label}: Starting (${this.total} items)`);
+			console.log(this.formatProgress(""));
 		}
 	}
 
@@ -79,9 +78,9 @@ export class ProgressTracker {
 		if (this.isTTY && this.spinner) {
 			this.spinner.text = progressText;
 		} else {
-			// Non-TTY: log every 10th item or significant items
+			// Non-TTY: log every 10th item or the final item
 			if (this.current % 10 === 0 || this.current === this.total) {
-				console.log(`[${this.current}/${this.total}] ${currentItem}`);
+				console.log(progressText);
 			}
 		}
 	}
@@ -97,7 +96,7 @@ export class ProgressTracker {
 		if (this.isTTY && this.spinner) {
 			this.spinner.succeed(message);
 		} else {
-			console.log(`✔ ${message}`);
+			console.log(message);
 		}
 	}
 
@@ -108,7 +107,7 @@ export class ProgressTracker {
 		if (this.isTTY && this.spinner) {
 			this.spinner.fail(message);
 		} else {
-			console.error(`✖ ${message}`);
+			console.error(message);
 		}
 	}
 

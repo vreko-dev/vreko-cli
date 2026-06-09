@@ -1,152 +1,173 @@
-import { readdir, readFile } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+// Environment loader MUST be first import - loads .env.local before other modules
+import "./load-env.js";
+import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { checkbox, confirm, input, search } from "@inquirer/prompts";
-import type { Snapshot, SnapshotStorage } from "@snapback/contracts";
-import { createSnapshotStorage } from "@snapback/contracts/types/snapshot";
-import { CLIEngineAdapter } from "@snapback/engine/transports/cli";
+
+// Sentry must be initialized before any other code runs
+import { createSentryConfig, Sentry } from "@vreko/sentry-privacy";
+
+Sentry.init(
+	createSentryConfig({
+		dsn: process.env.SENTRY_DSN_CLI || process.env.SENTRY_DSN || "",
+		surface: "cli",
+	}),
+);
+
+import { execFileSync } from "node:child_process";
 import chalk from "chalk";
 import { Command, Option } from "commander";
-import ora from "ora";
 
 // =============================================================================
-// VERSION & METADATA
+// VERSION  -  inlined at build time by tsup (no filesystem read at startup)
 // =============================================================================
 
-const __dirname = fileURLToPath(new URL(".", import.meta.url));
+declare const __CLI_VERSION__: string;
 
-async function getPackageVersion(): Promise<string> {
-	try {
-		const pkgPath = join(__dirname, "../package.json");
-		const pkg = JSON.parse(await readFile(pkgPath, "utf-8"));
-		return pkg.version;
-	} catch {
-		return "0.0.0";
-	}
-}
+// Global state for CLI options  -  lives in cli-state.ts to avoid circular imports
+import { cliState } from "./cli-state.js";
+export { cliState };
 
-// Global state for CLI options
-export const cliState = {
-	verbose: false,
-	quiet: false,
-	debug: false,
-	noColor: false,
-};
+// =============================================================================
+// COMMANDS
+// =============================================================================
 
-// New CLI commands
 import {
 	// ACP Server
 	acpCommand,
 	// Polish commands (Phase 6)
 	createAliasCommand,
+	// Workspace analysis (daemon-first bootstrap)
+	createAnalyzeCommand,
+	// Check command (pre-commit risk check)
+	createCheckCommand,
+	// Claude Code integration
+	createClaudeSyncCommand,
 	// Shell completions
 	createCompletionCommand,
 	createConfigCommand,
+	// Learning consolidation
+	createConsolidateCommand,
 	// Intelligence (CLI-UX-005)
 	createContextCommand,
+	// Diagnostics
+	createDiagnosticsCommand,
 	createDoctorCommand,
 	createFixCommand,
+	// Hooks  -  AI tool integration hooks (AMBIENT-06)
+	createHooksCommand,
 	// Workspace management
 	createInitCommand,
+	// Interactive wizard
+	createInteractiveCommand,
 	// Learning
 	createLearnCommand,
 	// Auth
 	createLoginCommand,
 	createLogoutCommand,
+	// Momentum scoring
+	createMetricsCommand,
+	createOnboardCommand,
 	createPatternsCommand,
+	// Projections  -  ambient intelligence pointer injection (AMBIENT-04)
+	createProjectionsCommand,
 	// Protection
 	createProtectCommand,
+	// Pulse  -  mid-session intelligence snapshot (AMBIENT-02)
+	createPulseCommand,
+	createPurgeCommand,
+	createRefreshCommand,
+	// Risk analysis
+	createRiskAnalyzeCommand,
 	createSessionCommand,
+	createSetKeyCommand,
+	createSnapshotCommand,
 	createStatsCommand,
 	createStatusCommand,
+	createSyncCommand,
 	// MCP
 	createToolsCommand,
 	createUndoCommand,
 	createUpgradeCommand,
 	createValidateCommand,
+	createVrStartCommand,
+	createVrStopCommand,
 	createWatchCommand,
 	createWhoamiCommand,
-	// Interactive wizard
-	createWizardCommand,
+	createWorkspacesCommand,
 	// MCP Server
 	mcpCommand,
-	// Daemon
-	registerDaemonCommands,
-	runWizard,
+	// Baseline
+	registerBaselineCommands,
+	// Intel  -  agent harness intelligence commands (Phase 3)
+	registerIntelCommand,
+	// Service
+	registerServiceCommands,
 } from "./commands";
-// CLI-UX-002: Git Client for staged files
-import { GitClient, GitNotInstalledError, GitNotRepositoryError, isCodeFile } from "./services/git-client";
-import { isLoggedIn, isSnapbackInitialized } from "./services/snapback-dir";
+// Backward-compat alias stub  -  imported directly to avoid brand-term re-export
+import { registerDaemonCommands } from "./commands/daemon";
+import { isServiceHealthy } from "./service-adapter/local-service-adapter.js";
+import { captureEvent } from "./services/analytics.js";
 import { userState } from "./services/state";
-// Smart Errors UI
-import { displayUnknownCommandError } from "./ui/errors";
+import { isVrekoInitialized } from "./services/vreko-dir";
+import { displaySmartError, displayUnknownCommandError } from "./ui/errors";
+import { getRenderMode } from "./ui/guards.js";
 
 // Branding (re-exported for postinstall script)
 export { displayWelcomeMessage } from "./ui/logo";
 
-// CLI-UX-001, 003, 004: UX Utilities
-import {
-	createFileSummaryTable,
-	createRiskSignalTable,
-	createSnapshotTable,
-	displayHighRiskWarning,
-	displaySaveStory,
-	displaySnapshotSuccess,
-	type FileRiskSummary,
-	ProgressTracker,
-} from "./utils";
-
-// V2 Engine adapter instance (replaces V1 Guardian)
-const engineAdapter = new CLIEngineAdapter();
-
-// Helper function to recursively get all files
-async function getAllFiles(dir: string, baseDir: string = dir): Promise<string[]> {
-	const files: string[] = [];
-	try {
-		const entries = await readdir(dir, { withFileTypes: true });
-		for (const entry of entries) {
-			const fullPath = join(dir, entry.name);
-			// Skip node_modules, .git, and other common ignore patterns
-			if (entry.name === "node_modules" || entry.name === ".git" || entry.name.startsWith(".")) {
-				continue;
-			}
-			if (entry.isDirectory()) {
-				files.push(...(await getAllFiles(fullPath, baseDir)));
-			} else {
-				files.push(relative(baseDir, fullPath));
-			}
-		}
-	} catch {
-		// Ignore permission errors
-	}
-	return files;
-}
+// =============================================================================
+// CLI FACTORY
+// =============================================================================
 
 export async function createCLI() {
 	const program = new Command();
-	const version = await getPackageVersion();
 
 	program
-		.name("snapback")
-		.description("AI-safe code snapshots and risk analysis")
-		.alias("snap")
-		.version(version, "-v, --version", "Display version number")
+		.name("vreko")
+		.description("Intelligence-driven development  -  observe, learn, and surface warnings before the next mistake")
+		.version(__CLI_VERSION__, "-v, --version", "Display version number")
 		.helpOption("-h, --help", "Display help for command")
-		.addOption(new Option("--verbose", "Enable verbose output").env("SNAPBACK_VERBOSE").default(false))
+		.addOption(
+			new Option("--verbose", "Enable verbose output")
+				.env("VREKO_VERBOSE")
+				.default(process.env.VREKO_VERBOSE ?? false), // 90-day compat
+		)
 		.addOption(new Option("-q, --quiet", "Suppress non-essential output").default(false))
 		.addOption(new Option("--no-color", "Disable colored output").env("NO_COLOR").default(false))
 		.addOption(
-			new Option("--debug", "Enable debug mode with detailed logging").env("SNAPBACK_DEBUG").default(false),
+			new Option("--debug", "Enable debug mode with detailed logging")
+				.env("VREKO_DEBUG")
+				.default(process.env.VREKO_DEBUG ?? false), // 90-day compat
 		)
+		.addOption(
+			new Option("--json", "Output in JSON format for LLM consumption")
+				.env("VREKO_JSON")
+				.default(process.env.VREKO_JSON ?? false), // 90-day compat
+		)
+		.addOption(
+			new Option("--plain", "Disable TUI; output JSON for scripts and CI (same as VREKO_PLAIN=1)")
+				.env("VREKO_PLAIN")
+				.default(process.env.VREKO_PLAIN ?? false),
+		)
+		.addOption(new Option("-y, --yes", "Skip confirmation prompts (for CI/automation)").default(false))
 		.hook("preAction", (thisCommand) => {
 			const opts = thisCommand.opts();
 			cliState.verbose = opts.verbose || false;
 			cliState.quiet = opts.quiet || false;
 			cliState.debug = opts.debug || false;
 			cliState.noColor = opts.color === false;
+			cliState.json = opts.json || false;
+			cliState.yes = opts.yes || false;
+			if (opts.plain) {
+				process.env.VREKO_PLAIN = "1";
+			}
+			cliState.renderMode = getRenderMode();
 
-			// Disable chalk colors if --no-color is set
-			if (cliState.noColor) {
+			// Respect NO_COLOR (https://no-color.org) and FORCE_COLOR (https://force-color.org)
+			// FORCE_COLOR overrides NO_COLOR, which overrides auto-detection
+			if (process.env.FORCE_COLOR) {
+				chalk.level = (Number(process.env.FORCE_COLOR) as 0 | 1 | 2 | 3) || 1;
+			} else if (cliState.noColor || cliState.json) {
 				chalk.level = 0;
 			}
 
@@ -158,113 +179,174 @@ export async function createCLI() {
 		.addHelpText(
 			"after",
 			`
-Examples:
-  $ snap init                    Initialize SnapBack in current directory
-  $ snap status                  Show workspace health and status
-  $ snap check                   Check staged files for risky changes
-  $ snap snapshot -m "backup"    Create a named snapshot
-  $ snap doctor                  Run diagnostic checks
+Workflows:
+  First time setup:  vreko init → vreko analyze → vreko sync → vreko metrics
+  Daily protection:  vreko status → vreko check → vreko snapshot -m "before work"
+  After AI session:  vreko validate --all → vreko learn → vreko patterns
+  Debug/restore:     vreko doctor → vreko undo → vreko snapshot --list
+
+Agent Workflows (--json flag enables structured output on all commands):
+  Assess workspace:  vreko status --json && vreko metrics --json
+  Before editing:    vreko context "<task>" --json
+  Validate changes:  vreko validate --all --json
+  Score a file:      vreko metrics <path> --json
+  Run diagnostics:   vreko doctor --json
+
+Common Examples:
+  $ vreko init                Initialize Vreko in current directory (or: vr init)
+  $ vreko status              Show workspace health and status (or: vr status)
+  $ vreko check               Check staged files for risky changes (or: vr check)
+  $ vreko snapshot -m "backup"  Create a named snapshot (or: vr snapshot)
+  $ vreko sync && vreko metrics  Collect signals then show critical (or: vr sync)
+  $ vreko doctor              Run diagnostic checks (or: vr doctor)
 
 Environment Variables:
-  SNAPBACK_VERBOSE    Enable verbose output (same as --verbose)
-  SNAPBACK_DEBUG      Enable debug mode (same as --debug)
-  SNAPBACK_API_URL    Override API endpoint (default: https://api.snapback.dev)
-  NO_COLOR            Disable colored output (same as --no-color)
+  VREKO_VERBOSE    Enable verbose output (same as --verbose)
+  VREKO_DEBUG      Enable debug mode (same as --debug)
+  VREKO_JSON       Output in JSON format for LLM consumption (same as --json)
+  VREKO_PLAIN      Disable TUI, output JSON for scripts/CI (same as --plain)
+  VREKO_API_URL    Override API endpoint (default: https://api.vreko.dev)
+  NO_COLOR            Disable colored output (https://no-color.org)
+  FORCE_COLOR         Force colored output even when piped (https://force-color.org)
 
 Configuration:
-  Global config:    ~/.snapback/config.json
-  Workspace config: .snapback/config.json
+  Global config:    ~/.vreko/config.json
+  Workspace config: .vreko/config.json
 
 Documentation:
-  https://docs.snapback.dev
-  https://github.com/snapback-dev/snapback-cli
+  https://docs.vreko.dev
+  https://github.com/vreko-dev/vreko-cli
+  https://vreko.dev/llms.txt  (machine-readable docs for LLM agents)
 `,
 		)
+		.enablePositionalOptions()
+		.passThroughOptions()
 		.configureHelp({
+			helpWidth: 80,
 			sortSubcommands: true,
 			sortOptions: true,
-		});
+		})
+		.showSuggestionAfterError()
+		.showHelpAfterError("(run vreko --help for available commands)");
 
 	// =========================================================================
-	// NEW COMMANDS - Customer MCP System
-	// =======================================================================
+	// AUTH COMMANDS
+	// =========================================================================
 
-	// Auth commands
-	program.addCommand(createLoginCommand());
-	program.addCommand(createLogoutCommand());
-	program.addCommand(createWhoamiCommand());
+	program.addCommand(createLoginCommand(), { hidden: true });
+	program.addCommand(createLogoutCommand(), { hidden: true });
+	program.addCommand(createSetKeyCommand(), { hidden: true });
+	program.addCommand(createWhoamiCommand(), { hidden: true });
+	program.addCommand(createWorkspacesCommand(), { hidden: true });
 
-	// Workspace management
+	// =========================================================================
+	// WORKSPACE MANAGEMENT COMMANDS
+	// =========================================================================
+
 	program.addCommand(createInitCommand());
+	program.addCommand(createPurgeCommand(), { hidden: true });
+	program.addCommand(createOnboardCommand(), { hidden: true });
+	program.addCommand(createClaudeSyncCommand(), { hidden: true });
+	program.addCommand(createAnalyzeCommand(), { hidden: true });
 	program.addCommand(createStatusCommand());
-	program.addCommand(createFixCommand());
+	program.addCommand(createFixCommand(), { hidden: true });
 
-	// MCP tools configuration
-	program.addCommand(createToolsCommand());
+	// =========================================================================
+	// MCP / ACP COMMANDS
+	// =========================================================================
 
-	// MCP server (--stdio)
-	program.addCommand(mcpCommand);
-	program.addCommand(acpCommand);
+	program.addCommand(createToolsCommand(), { hidden: true });
+	program.addCommand(mcpCommand, { hidden: true });
+	program.addCommand(acpCommand, { hidden: true });
 
-	// Protection management
-	program.addCommand(createProtectCommand());
+	// =========================================================================
+	// PROTECTION COMMANDS
+	// =========================================================================
 
-	// Session management
+	program.addCommand(createProtectCommand(), { hidden: true });
 	program.addCommand(createSessionCommand());
+	program.addCommand(createSnapshotCommand());
 
-	// Intelligence (CLI-UX-005) - Brings internal MCP capabilities to customer CLI
-	program.addCommand(createContextCommand());
-	program.addCommand(createValidateCommand());
-	program.addCommand(createStatsCommand());
+	// =========================================================================
+	// INTELLIGENCE COMMANDS
+	// =========================================================================
 
-	// Learning system
-	program.addCommand(createLearnCommand());
-	program.addCommand(createPatternsCommand());
+	program.addCommand(createContextCommand(), { hidden: true });
+	program.addCommand(createValidateCommand(), { hidden: true });
+	program.addCommand(createStatsCommand(), { hidden: true });
+	program.addCommand(createPulseCommand(), { hidden: true });
+	program.addCommand(createProjectionsCommand(), { hidden: true });
+	program.addCommand(createHooksCommand(), { hidden: true });
 
-	// Continuous watching
-	program.addCommand(createWatchCommand());
+	// Intel  -  agent harness intelligence snapshot (Phase 3)
+	registerIntelCommand(program);
+
+	// =========================================================================
+	// MOMENTUM SCORING COMMANDS
+	// =========================================================================
+
+	program.addCommand(createSyncCommand(), { hidden: true });
+	program.addCommand(createMetricsCommand(), { hidden: true });
+	program.addCommand(createRefreshCommand(), { hidden: true });
+
+	// =========================================================================
+	// LEARNING COMMANDS
+	// =========================================================================
+
+	program.addCommand(createLearnCommand(), { hidden: true });
+	program.addCommand(createPatternsCommand(), { hidden: true });
+	program.addCommand(createConsolidateCommand(), { hidden: true });
+
+	// =========================================================================
+	// FILE ANALYSIS COMMANDS
+	// =========================================================================
+
+	program.addCommand(createCheckCommand(), { hidden: true });
+	program.addCommand(createRiskAnalyzeCommand(), { hidden: true });
+	program.addCommand(createWatchCommand(), { hidden: true });
+
+	// =========================================================================
+	// TOP-LEVEL LIFECYCLE COMMANDS
+	// =========================================================================
+
+	program.addCommand(createVrStartCommand());
+	program.addCommand(createVrStopCommand());
+
+	// =========================================================================
+	// INTERACTIVE / GUIDED COMMANDS
+	// =========================================================================
+
+	program.addCommand(createInteractiveCommand(), { hidden: true });
 
 	// =========================================================================
 	// POLISH COMMANDS (Phase 6)
 	// =========================================================================
 
-	// Configuration management
-	program.addCommand(createConfigCommand());
-
-	// Diagnostics
-	program.addCommand(createDoctorCommand());
-
-	// Self-update
-	program.addCommand(createUpgradeCommand());
-
-	// Interactive wizard for first-time users
-	program.addCommand(createWizardCommand());
-
-	// Undo command for reverting operations
-	program.addCommand(createUndoCommand());
-
-	// Command aliases
-	program.addCommand(createAliasCommand());
-
-	// Shell completion scripts
-	program.addCommand(createCompletionCommand());
+	program.addCommand(createConfigCommand(), { hidden: true });
+	program.addCommand(createDoctorCommand(), { hidden: true });
+	program.addCommand(createDiagnosticsCommand(), { hidden: true });
+	program.addCommand(createUpgradeCommand(), { hidden: true });
+	program.addCommand(createUndoCommand(), { hidden: true });
+	program.addCommand(createAliasCommand(), { hidden: true });
+	program.addCommand(createCompletionCommand(), { hidden: true });
 
 	// =========================================================================
 	// DAEMON COMMANDS
 	// =========================================================================
 
-	// Register daemon lifecycle commands (start, stop, status, restart, ping)
 	registerDaemonCommands(program);
 
 	// =========================================================================
-	// ALIAS EXPANSION
+	// SERVICE COMMANDS
 	// =========================================================================
 
-	// Hook into argument parsing to expand aliases
-	program.hook("preAction", (_thisCommand) => {
-		// Note: alias expansion is handled at parse time
-		// This hook is here for future expansion features
-	});
+	registerServiceCommands(program);
+
+	// =========================================================================
+	// BASELINE COMMANDS (Phase 5)
+	// =========================================================================
+
+	registerBaselineCommands(program);
 
 	// =========================================================================
 	// UNKNOWN COMMAND HANDLER (Smart Error Suggestions)
@@ -273,531 +355,30 @@ Documentation:
 	program.on("command:*", (unknownCommand: string[]) => {
 		const cmd = unknownCommand[0];
 		displayUnknownCommandError(cmd);
+		Sentry.captureException(new Error(`Unknown command: ${String(cmd).slice(0, 200)}`));
+		void captureEvent("cli.unknown_command", { command: String(cmd).slice(0, 200) });
 		process.exit(1);
 	});
-
-	// =========================================================================
-	// EXISTING COMMANDS
-	// =========================================================================
-
-	program
-		.command("analyze <file>")
-		.option("-i, --interactive", "Interactive mode with detailed analysis")
-		.option("-a, --ast", "Use AST-based analysis for deeper insights")
-		.action(async (file) => {
-			try {
-				const fullPath = resolve(process.cwd(), file);
-				const text = await readFile(fullPath, "utf-8");
-
-				const spinner = ora("Analyzing file...").start();
-
-				// Use V2 engine adapter for analysis
-				const result = await engineAdapter.analyze({
-					files: [{ path: file, content: text }],
-					format: "json",
-				});
-
-				spinner.succeed("Analysis complete");
-
-				// Parse the JSON output if available
-				let riskData: {
-					riskScore: number;
-					riskLevel: string;
-					signals?: Array<{ signal: string; value: number }>;
-				};
-				try {
-					riskData = JSON.parse(result.output);
-				} catch {
-					riskData = { riskScore: result.riskScore, riskLevel: result.riskLevel };
-				}
-
-				console.log(chalk.cyan("Risk Level:"), riskData.riskLevel.toUpperCase());
-				console.log(chalk.cyan("Risk Score:"), `${riskData.riskScore.toFixed(1)}/10`);
-
-				// Display risk signals in formatted table (CLI-UX-003)
-				if (riskData.signals && riskData.signals.length > 0) {
-					console.log();
-					console.log(createRiskSignalTable(riskData.signals));
-				}
-
-				// Display boxed warning for high-risk files (CLI-UX-001)
-				if (riskData.riskScore > 7) {
-					console.log();
-					console.log(displayHighRiskWarning(file, riskData.riskScore));
-				} else if (riskData.riskScore > 4) {
-					console.log(chalk.yellow("\nRecommendation: Review changes before proceeding."));
-				}
-			} catch (error: any) {
-				console.error(chalk.red("Error:"), error.message);
-				process.exit(1);
-			}
-		});
-
-	// Snapshot command with aliases per spec §15.1
-	program
-		.command("snapshot")
-		.alias("ss")
-		.alias("snap")
-		.description("Create a code snapshot (aliases: ss, snap)")
-		.option("-m, --message <message>", "Add a message to the snapshot")
-		.option("-f, --files <files...>", "Specify files to include in snapshot")
-		.action(async (options) => {
-			const spinner = ora("Creating snapshot...").start();
-
-			try {
-				const storage: SnapshotStorage = await createSnapshotStorage(process.cwd());
-				const snap = await storage.create({
-					description: options.message,
-					protected: false,
-					...(options.files && { files: options.files }),
-				});
-
-				spinner.succeed("Snapshot created");
-
-				// Display boxed success output (CLI-UX-001)
-				console.log();
-				console.log(displaySnapshotSuccess(snap.id, options.message, options.files?.length || 0));
-			} catch (error: any) {
-				spinner.fail("Failed to create snapshot");
-				console.error(chalk.red("Error:"), error.message);
-				process.exit(1);
-			}
-		});
-
-	program.command("list").action(async () => {
-		const spinner = ora("Loading snapshots...").start();
-
-		try {
-			const storage: SnapshotStorage = await createSnapshotStorage(process.cwd());
-			const snaps = await storage.list();
-
-			spinner.succeed("Snapshots loaded");
-
-			if (snaps.length === 0) {
-				console.log(chalk.yellow("No snapshots found"));
-				return;
-			}
-
-			// Display snapshots in formatted table (CLI-UX-003)
-			console.log();
-			console.log(
-				createSnapshotTable(
-					snaps.map((s: Snapshot) => ({
-						id: s.id,
-						timestamp: new Date(s.timestamp),
-						message: s.meta?.message,
-						fileCount: s.files?.length,
-					})),
-				),
-			);
-		} catch (error: any) {
-			spinner.fail("Failed to load snapshots");
-			console.error(chalk.red("Error:"), error.message);
-			process.exit(1);
-		}
-	});
-
-	program
-		.command("interactive")
-		.description("Interactive mode with guided workflow")
-		.action(async () => {
-			console.log(chalk.blue("Welcome to SnapBack Interactive Mode!"));
-
-			const action = await search({
-				message: "What would you like to do?",
-				source: async (term) => {
-					const choices = [
-						{ name: "Analyze a file", value: "analyze" },
-						{ name: "Create a snapshot", value: "snapshot" },
-						{ name: "List snapshots", value: "list" },
-						{ name: "Exit", value: "exit" },
-					];
-					if (!term) {
-						return choices;
-					}
-					return choices.filter((c) => c.name.toLowerCase().includes(term.toLowerCase()));
-				},
-			});
-
-			switch (action) {
-				case "analyze":
-					await interactiveAnalyze();
-					break;
-				case "snapshot":
-					await interactiveSnapshot();
-					break;
-				case "list":
-					await interactiveList();
-					break;
-				case "exit":
-					console.log(chalk.blue("Goodbye!"));
-					process.exit(0);
-			}
-		});
-
-	program
-		.command("check")
-		.description("Pre-commit hook to check for risky AI changes")
-		.option("-m, --mode <mode>", "Check mode: quick (default), build, architecture, learnings")
-		.option("-s, --snapshot", "Create snapshot if risky changes detected")
-		.option("-q, --quiet", "Suppress output unless issues found")
-		.option("-a, --all", "Check all files, not just staged (legacy behavior)")
-		.action(async (options) => {
-			const cwd = process.cwd();
-			const mode = options.mode || "quick";
-
-			// §14.3: Handle different check modes
-			if (mode === "build") {
-				// Build mode - run TypeScript build
-				const { execSync } = await import("node:child_process");
-				try {
-					console.log(chalk.cyan("Running build check..."));
-					execSync("pnpm build", { cwd, stdio: "inherit" });
-					console.log(chalk.green("✓ Build passed"));
-				} catch (_error) {
-					console.error(chalk.red("✗ Build failed"));
-					process.exit(1);
-				}
-				return;
-			}
-
-			if (mode === "architecture" || mode === "learnings" || mode === "circular" || mode === "docs") {
-				// These modes are best handled by MCP check tool
-				console.log(chalk.yellow(`Check mode "${mode}" is available via MCP tools.`));
-				console.log(chalk.gray(`In your AI client, use: check(mode: "${mode}")`));
-				console.log(chalk.gray("\nSupported CLI modes: quick, build"));
-				return;
-			}
-
-			// Default: quick mode (staged file risk analysis)
-			try {
-				// CLI-UX-002: Use GitClient for staged files
-				const git = new GitClient({ cwd });
-
-				// Validate git environment
-				if (!(await git.isGitInstalled())) {
-					throw new GitNotInstalledError();
-				}
-
-				if (!(await git.isGitRepository())) {
-					throw new GitNotRepositoryError(cwd);
-				}
-
-				// Get files to check
-				let filesToCheck: string[];
-
-				if (options.all) {
-					// Legacy behavior: all files
-					const allFiles = await getAllFiles(cwd);
-					filesToCheck = allFiles.filter(isCodeFile);
-				} else {
-					// New behavior: staged files only (CLI-UX-002)
-					const stagedFiles = await git.getStagedFiles();
-					filesToCheck = stagedFiles
-						.filter((f) => f.status !== "deleted")
-						.filter((f) => isCodeFile(f.path))
-						.map((f) => f.path);
-				}
-
-				if (filesToCheck.length === 0) {
-					if (!options.quiet) {
-						console.log(chalk.green("\u2713 No staged code files to check"));
-					}
-					return;
-				}
-
-				// CLI-UX-004: Use ProgressTracker for real-time feedback
-				const progress = new ProgressTracker({
-					total: filesToCheck.length,
-					label: "Analyzing",
-					quiet: options.quiet,
-				});
-
-				progress.start();
-
-				const fileResults: FileRiskSummary[] = [];
-				let hasRiskyChanges = false;
-
-				for (const file of filesToCheck) {
-					progress.update(file);
-
-					try {
-						// Get content - staged version or working directory
-						const content = options.all
-							? await readFile(resolve(cwd, file), "utf-8")
-							: await git.getStagedContent(file);
-
-						const result = await engineAdapter.analyze({
-							files: [{ path: file, content }],
-							format: "json",
-							quiet: true,
-						});
-
-						let signals: Array<{ signal: string; value: number }> = [];
-						try {
-							const data = JSON.parse(result.output);
-							signals = data.signals || [];
-						} catch {
-							// Output wasn't JSON
-						}
-
-						const riskLevel = result.riskScore > 7 ? "high" : result.riskScore > 4 ? "medium" : "low";
-
-						fileResults.push({
-							file,
-							riskScore: result.riskScore,
-							riskLevel,
-							topSignal: signals.filter((s) => s.value > 0)[0]?.signal,
-						});
-
-						if (result.riskScore > 5) {
-							hasRiskyChanges = true;
-						}
-					} catch {
-						// Skip files that can't be analyzed (binary, permissions, etc.)
-					}
-				}
-
-				// Summary statistics
-				const highRisk = fileResults.filter((f) => f.riskScore > 7).length;
-				const mediumRisk = fileResults.filter((f) => f.riskScore > 4 && f.riskScore <= 7).length;
-
-				if (hasRiskyChanges) {
-					progress.fail(
-						`Found risks in ${highRisk + mediumRisk} files (${highRisk} high, ${mediumRisk} medium) - ${progress.getElapsed()}`,
-					);
-
-					// CLI-UX-003: Display results in formatted table
-					if (!options.quiet && fileResults.length > 0) {
-						console.log();
-						console.log(chalk.cyan("Analysis Results:"));
-						console.log(createFileSummaryTable(fileResults));
-					}
-
-					if (options.snapshot) {
-						const snapshotSpinner = ora("Creating snapshot...").start();
-						try {
-							const storage: SnapshotStorage = await createSnapshotStorage(cwd);
-							const snap = await storage.create({
-								description: "Pre-commit snapshot for risky AI changes",
-								protected: true,
-							});
-
-							snapshotSpinner.succeed(`Snapshot created: ${snap.id.substring(0, 8)}`);
-
-							// CLI-UX-001: Display save story
-							const maxRiskScore = Math.max(...fileResults.map((f) => f.riskScore));
-							console.log();
-							console.log(
-								displaySaveStory(
-									maxRiskScore,
-									fileResults.map((f) => f.file),
-									snap.id,
-								),
-							);
-						} catch (error: any) {
-							snapshotSpinner.fail("Failed to create snapshot");
-							console.error(chalk.red("Error:"), error.message);
-							process.exit(1);
-						}
-					} else if (!options.quiet) {
-						console.log(
-							chalk.yellow(
-								"\n\ud83d\udca1 Recommendation: Consider creating a snapshot before committing",
-							),
-						);
-						console.log(chalk.gray("Run with --snapshot flag to automatically create a snapshot"));
-					}
-
-					if (!options.quiet) {
-						console.log(chalk.gray("\nTo bypass this check, use: git commit --no-verify"));
-					}
-					process.exit(1);
-				} else {
-					progress.complete(
-						`No risky changes detected in ${filesToCheck.length} files - ${progress.getElapsed()}`,
-					);
-				}
-			} catch (error: any) {
-				if (error instanceof GitNotInstalledError) {
-					console.error(chalk.red("Error:"), "Git must be installed to use the check command");
-					console.log(chalk.gray("Install git: https://git-scm.com/downloads"));
-					process.exit(1);
-				}
-
-				if (error instanceof GitNotRepositoryError) {
-					console.error(chalk.red("Error:"), "This command must be run inside a git repository");
-					console.log(chalk.gray("Initialize with: git init"));
-					process.exit(1);
-				}
-
-				if (!options.quiet) {
-					console.error(chalk.red("Error:"), error.message);
-				}
-				process.exit(1);
-			}
-		});
 
 	return program;
 }
 
-async function interactiveAnalyze() {
-	const cwd = process.cwd();
-	const allFiles = await getAllFiles(cwd);
-
-	const file = await search({
-		message: "Search for the file you want to analyze:",
-		source: async (term) => {
-			if (!term) {
-				return allFiles.slice(0, 10).map((f) => ({ value: f }));
-			}
-			const filtered = allFiles.filter((f) => f.toLowerCase().includes(term.toLowerCase()));
-			return filtered.slice(0, 10).map((f) => ({ value: f }));
-		},
-	});
-
-	// Note: AST option is now handled internally by V2 engine signals (complexity, cycles)
-	const answers = { file };
-
-	try {
-		const fullPath = resolve(process.cwd(), answers.file);
-		const text = await readFile(fullPath, "utf-8");
-
-		const spinner = ora("Analyzing file...").start();
-
-		// Use V2 engine adapter for analysis
-		const result = await engineAdapter.analyze({
-			files: [{ path: answers.file, content: text }],
-			format: "json",
-		});
-
-		spinner.succeed("Analysis complete");
-
-		// Parse and display results
-		let riskData: { riskScore: number; riskLevel: string; signals?: Array<{ signal: string; value: number }> };
-		try {
-			riskData = JSON.parse(result.output);
-		} catch {
-			riskData = { riskScore: result.riskScore, riskLevel: result.riskLevel };
-		}
-
-		console.log(chalk.cyan("Risk Level:"), riskData.riskLevel.toUpperCase());
-		console.log(chalk.cyan("Risk Score:"), `${riskData.riskScore.toFixed(1)}/10`);
-
-		if (riskData.signals && riskData.signals.length > 0) {
-			const activeSignals = riskData.signals.filter((s) => s.value > 0);
-			if (activeSignals.length > 0) {
-				console.log(chalk.yellow("\nRisk Factors:"));
-				activeSignals.forEach((signal) => {
-					console.log(chalk.yellow(`  ⚠ ${signal.signal}: ${signal.value.toFixed(1)}`));
-				});
-			}
-		}
-
-		// Ask if user wants to create a snapshot (V2 uses 0-10 scale, 5 = medium risk)
-		const createSnapshotPrompt = await confirm({
-			message: "Would you like to create a snapshot?",
-			default: riskData.riskScore > 5,
-		});
-
-		if (createSnapshotPrompt) {
-			await interactiveSnapshot({ files: [answers.file] });
-		}
-	} catch (error: any) {
-		console.error(chalk.red("Error:"), error.message);
-	}
-}
-
-async function interactiveSnapshot(options: { files?: string[] } = {}) {
-	const message = await input({
-		message: "Add a message to your snapshot (optional):",
-		default: "",
-	});
-
-	let files: string[] = options.files || [];
-
-	if (!options.files || options.files.length === 0) {
-		const includeFiles = await confirm({
-			message: "Include specific files in this snapshot?",
-			default: false,
-		});
-
-		if (includeFiles) {
-			const cwd = process.cwd();
-			const allFiles = await getAllFiles(cwd);
-
-			files = await checkbox({
-				message: "Select files to include in snapshot (use space to select):",
-				choices: allFiles.slice(0, 50).map((f) => ({ value: f, name: f })),
-			});
-		}
-	}
-
-	const spinner = ora("Creating snapshot...").start();
-
-	try {
-		const storage: SnapshotStorage = await createSnapshotStorage(process.cwd());
-		const snap = await storage.create({
-			description: message,
-			protected: false,
-			...(files.length > 0 && { files }),
-		});
-
-		spinner.succeed("Snapshot created");
-		console.log(chalk.green("Created snapshot"), snap.id);
-	} catch (error: any) {
-		spinner.fail("Failed to create snapshot");
-		console.error(chalk.red("Error:"), error.message);
-	}
-}
-
-async function interactiveList() {
-	const spinner = ora("Loading snapshots...").start();
-
-	try {
-		const storage: SnapshotStorage = await createSnapshotStorage(process.cwd());
-		const snaps: Snapshot[] = await storage.list();
-
-		spinner.succeed("Snapshots loaded");
-
-		if (snaps.length === 0) {
-			console.log(chalk.yellow("No snapshots found"));
-			return;
-		}
-
-		// Show detailed snapshot information
-		console.log(chalk.blue("\nSnapshots:"));
-		snaps.forEach((snap: Snapshot, index: number) => {
-			console.log(chalk.gray(`\n${index + 1}. ${snap.id.substring(0, 8)}`));
-			console.log(chalk.gray(`   Time: ${new Date(snap.timestamp).toISOString()}`));
-			if (snap.meta?.message) {
-				console.log(chalk.gray(`   Message: ${snap.meta.message}`));
-			}
-			// Note: The storage interface doesn't currently support files property
-			// This would need to be added to the storage interface if needed
-		});
-	} catch (error: any) {
-		spinner.fail("Failed to load snapshots");
-		console.error(chalk.red("Error:"), error.message);
-	}
-}
-
 // =============================================================================
-// SMART ROUTER - Intelligent no-args behavior
+// SMART ROUTER  -  Intelligent no-args behavior
 // =============================================================================
 
 /**
- * Smart router for `snap` with no arguments.
+ * Smart router for `vreko` with no arguments.
  * Routes based on CLI state:
- * - First run → Launch wizard
- * - Not authenticated → Prompt login
- * - Not initialized → Prompt init
- * - Otherwise → Show status dashboard
+ * - Daemon not running → start it, then dashboard
+ * - Not initialized → vr init flow, then dashboard
+ * - Not logged in → show dashboard anyway, [l] login prominent
+ * - Initialized + daemon running → dashboard
  *
  * @returns true if handled (caller should exit), false to continue normal parsing
  */
 async function smartRouter(): Promise<boolean> {
-	// Only trigger for `snap` with no args (node, snap = 2 args)
+	// Only trigger for `vreko` with no args (node, vreko = 2 args)
 	if (process.argv.length > 2) {
 		return false;
 	}
@@ -806,34 +387,33 @@ async function smartRouter(): Promise<boolean> {
 
 	try {
 		const isFirstRun = userState.isFirstRun();
-		const authenticated = await isLoggedIn();
-		const initialized = await isSnapbackInitialized(cwd);
+		const initialized = await isVrekoInitialized(cwd);
 
-		if (isFirstRun) {
-			// First time user - run full wizard
-			await runWizard({ force: false });
-			return true;
+		// Spawn sub-commands via the currently-running CLI binary, not a
+		// globally-installed "vreko" shim which may resolve paths incorrectly.
+		const runSelf = (args: string[]) =>
+			execFileSync(process.execPath, [process.argv[1], ...args], { stdio: "inherit" });
+
+		// Check if service is running, start it if not
+		if (!(await isServiceHealthy())) {
+			process.stdout.write(`${chalk.gray("Starting service...")}\n`);
+			runSelf(["service", "start"]);
 		}
 
-		if (!authenticated) {
-			console.log(chalk.yellow("Not logged in."));
-			console.log(chalk.gray("Run: snap login"));
-			console.log();
-			console.log(chalk.gray("Or run: snap wizard  for guided setup"));
-			return true;
+		if (isFirstRun) {
+			// First run: launch init for setup
+			runSelf(["init"]);
+			// After init, show dashboard
 		}
 
 		if (!initialized) {
-			console.log(chalk.yellow("Workspace not initialized."));
-			console.log(chalk.gray("Run: snap init"));
-			console.log();
-			console.log(chalk.gray("Or run: snap wizard  for guided setup"));
-			return true;
+			// Not initialized: run init flow
+			runSelf(["init"]);
 		}
 
-		// Show dashboard (status command)
-		const statusCommand = createStatusCommand();
-		await statusCommand.parseAsync(["node", "snap"]);
+		// Show TUI dashboard (new multi-panel TUI  -  Phase 21)
+		const { launchTui } = await import("./ui/tui/index.js");
+		await launchTui("dashboard");
 		return true;
 	} catch {
 		// On any error, fall through to normal CLI behavior
@@ -841,18 +421,68 @@ async function smartRouter(): Promise<boolean> {
 	}
 }
 
-// Only execute the CLI if this file is run directly
-if (import.meta.url === new URL(process.argv[1], `file://${process.platform === "win32" ? "/" : ""}`).href) {
-	(async () => {
-		// Try smart routing first
-		if (await smartRouter()) {
-			process.exit(0);
-		}
+// =============================================================================
+// DEPRECATION CHECK
+// =============================================================================
 
-		// Otherwise, proceed with normal CLI parsing
-		const program = await createCLI();
-		await program.parseAsync(process.argv);
-	})();
+/**
+ * Check if invoked via deprecated 'snap' binary and print warning
+ */
+function checkDeprecatedBinary(): void {
+	// "snap" binary is deprecated; this hook is kept as a detection point
+	// for when a deprecation warning is re-added.
 }
 
-// createCLI is already exported above as an async function
+// =============================================================================
+// VERSION MISMATCH CHECK
+// =============================================================================
+
+/**
+ * Check if running global install vs local workspace version
+ * Warns user when they might be using outdated global install
+ */
+function checkVersionMismatch(): void {
+	// Version mismatch detection kept as a hook; warning display removed until
+	// the UX for this is decided.
+}
+
+// =============================================================================
+// ENTRYPOINT
+// =============================================================================
+
+// Only execute the CLI if this file is run directly.
+// Resolve symlinks on both sides  -  process.argv[1] may be a symlink (e.g. a
+// globally linked bin), while import.meta.url always reflects the real file.
+const _argv1Real = (() => {
+	try {
+		return realpathSync(process.argv[1]);
+	} catch {
+		return process.argv[1];
+	}
+})();
+if (_argv1Real === fileURLToPath(import.meta.url)) {
+	(async () => {
+		try {
+			// Check for deprecated binary name before any processing
+			checkDeprecatedBinary();
+			checkVersionMismatch();
+
+			if (await smartRouter()) {
+				process.exit(0);
+			}
+
+			const program = await createCLI();
+			await program.parseAsync(process.argv);
+		} catch (error: unknown) {
+			Sentry.captureException(error instanceof Error ? error : new Error(String(error)));
+			void captureEvent("cli.unhandled_error", {
+				message: error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500),
+			});
+			displaySmartError(error instanceof Error ? error : String(error));
+			await Sentry.close(2000);
+			process.exit(1);
+		} finally {
+			await Sentry.close(2000);
+		}
+	})();
+}

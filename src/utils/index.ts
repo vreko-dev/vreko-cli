@@ -121,3 +121,9 @@ export {
 	type UndoableOperation,
 	undoLastOperation,
 } from "./safe-ops";
+
+// =============================================================================
+// WORKSPACE UTILITIES
+// =============================================================================
+
+export { findGitRoot, findWorkspaceRoot } from "./workspace";

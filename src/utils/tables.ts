@@ -14,12 +14,12 @@
  *
  * | Function | Purpose | Used By |
  * |----------|---------|---------|
- * | createRiskSignalTable | Risk signals with severity | snap analyze |
- * | createFileSummaryTable | File analysis results | snap check |
- * | createSnapshotTable | Snapshot listing | snap list |
- * | createStagedFilesTable | Git staged files | snap check --all |
- * | createContextTable | Learnings for context | snap context |
- * | createValidationTable | Validation results | snap validate |
+ * | createRiskSignalTable | Risk signals with severity | vr analyze |
+ * | createFileSummaryTable | File analysis results | vr check |
+ * | createSnapshotTable | Snapshot listing | vr list |
+ * | createStagedFilesTable | Git staged files | vr check --all |
+ * | createContextTable | Learnings for context | vr context |
+ * | createValidationTable | Validation results | vr validate |
  *
  * ## Styling
  *
@@ -293,7 +293,7 @@ export function formatRecommendation(recommendation: string): string {
  *   { signal: "complexity", value: 8.5 },
  *   { signal: "churn", value: 3.2 },
  * ]);
- * console.log(table);
+ * print(...);
  * ```
  */
 export function createRiskSignalTable(signals: RiskSignal[]): string {
@@ -333,7 +333,7 @@ export function createRiskSignalTable(signals: RiskSignal[]): string {
  *
  * @remarks
  * Displays files sorted by risk score with color-coded levels.
- * Used by `snap check` command.
+ * Used by `vr check` command.
  *
  * @example
  * ```typescript
@@ -341,7 +341,7 @@ export function createRiskSignalTable(signals: RiskSignal[]): string {
  *   { file: "src/auth.ts", riskScore: 8.5, riskLevel: "high", topSignal: "complexity" },
  *   { file: "src/utils.ts", riskScore: 2.1, riskLevel: "low" },
  * ]);
- * console.log(table);
+ * print(...);
  * ```
  */
 export function createFileSummaryTable(files: FileRiskSummary[]): string {
@@ -389,14 +389,14 @@ export function createFileSummaryTable(files: FileRiskSummary[]): string {
  *
  * @remarks
  * Displays snapshots with relative timestamps.
- * Used by `snap list` command.
+ * Used by `vr list` command.
  *
  * @example
  * ```typescript
  * const table = createSnapshotTable([
  *   { id: "abc123def", timestamp: new Date(), message: "Before refactor", fileCount: 12 },
  * ]);
- * console.log(table);
+ * print(...);
  * ```
  */
 export function createSnapshotTable(
@@ -440,7 +440,7 @@ export function createSnapshotTable(
  * @returns Formatted table string
  *
  * @remarks
- * Used by `snap check --all` command.
+ * Used by `vr check --all` command.
  */
 export function createStagedFilesTable(
 	files: Array<{
@@ -492,7 +492,7 @@ export function createStagedFilesTable(
  *
  * @remarks
  * Displays learnings from Intelligence.getContext().relevantLearnings.
- * Used by `snap context` command.
+ * Used by `vr context` command.
  *
  * ## Implementation Notes for LLM Agents
  *
@@ -504,10 +504,10 @@ export function createStagedFilesTable(
  * @example
  * ```typescript
  * const table = createContextTable([
- *   { trigger: "auth", action: "Use @snapback/auth package", type: "pattern" },
+ *   { trigger: "auth", action: "Use @vreko/auth package", type: "pattern" },
  *   { trigger: "testing", action: "Use 4-path coverage", type: "pattern" },
  * ]);
- * console.log(table);
+ * print(...);
  * ```
  */
 export function createContextTable(learnings: LearningEntry[]): string {
@@ -543,7 +543,7 @@ export function createContextTable(learnings: LearningEntry[]): string {
  *
  * @remarks
  * Displays validation results with pass/fail, confidence, and recommendation.
- * Used by `snap validate` command.
+ * Used by `vr validate` command.
  *
  * ## Column Meanings
  *
@@ -559,7 +559,7 @@ export function createContextTable(learnings: LearningEntry[]): string {
  *   { file: "src/auth.ts", passed: false, confidence: 0.65, issues: 3, recommendation: "full_review" },
  *   { file: "src/utils.ts", passed: true, confidence: 0.95, issues: 0, recommendation: "auto_merge" },
  * ]);
- * console.log(table);
+ * print(...);
  * ```
  */
 export function createValidationTable(results: ValidationResult[]): string {

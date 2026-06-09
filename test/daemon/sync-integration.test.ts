@@ -2,7 +2,7 @@
  * Tests for daemon SyncWorker integration
  *
  * Validates that SyncWorker is properly wired into daemon lifecycle:
- * - Starts when session.begin is called
+ * - Starts when session.start is called
  * - Stops when daemon shuts down
  * - Non-fatal on failure
  *
@@ -20,8 +20,8 @@ describe("daemon SyncWorker integration", () => {
 		if (!existsSync(TEST_DIR)) {
 			mkdirSync(TEST_DIR, { recursive: true });
 		}
-		// Create .snapback directory
-		mkdirSync(join(TEST_DIR, ".snapback"), { recursive: true });
+		// Create .vreko directory
+		mkdirSync(join(TEST_DIR, ".vreko"), { recursive: true });
 	});
 
 	afterEach(() => {
@@ -32,16 +32,16 @@ describe("daemon SyncWorker integration", () => {
 
 	describe("SyncWorker singleton pattern", () => {
 		it("should import SyncWorker from intelligence package", async () => {
-			const { SyncWorker, StateStore } = await import("@snapback/intelligence");
+			const { SyncWorker, StateStore } = await import("@vreko/intelligence");
 
 			expect(SyncWorker).toBeDefined();
 			expect(StateStore).toBeDefined();
 		});
 
 		it("should create SyncWorker with valid config", async () => {
-			const { SyncWorker, StateStore } = await import("@snapback/intelligence");
+			const { SyncWorker, StateStore } = await import("@vreko/intelligence");
 
-			const store = new StateStore({ snapbackDir: join(TEST_DIR, ".snapback") });
+			const store = new StateStore({ vrekoDir: join(TEST_DIR, ".vreko") });
 			await store.load();
 
 			const worker = new SyncWorker(store, {
@@ -61,9 +61,9 @@ describe("daemon SyncWorker integration", () => {
 		});
 
 		it("should handle multiple start/stop cycles", async () => {
-			const { SyncWorker, StateStore } = await import("@snapback/intelligence");
+			const { SyncWorker, StateStore } = await import("@vreko/intelligence");
 
-			const store = new StateStore({ snapbackDir: join(TEST_DIR, ".snapback") });
+			const store = new StateStore({ vrekoDir: join(TEST_DIR, ".vreko") });
 			await store.load();
 
 			const worker = new SyncWorker(store, {
@@ -87,14 +87,14 @@ describe("daemon SyncWorker integration", () => {
 		it("should verify getSyncWorker returns consistent instances", async () => {
 			// This tests the singleton pattern conceptually
 			// In production, daemon maintains Map<string, SyncWorker>
-			const { SyncWorker, StateStore } = await import("@snapback/intelligence");
+			const { SyncWorker, StateStore } = await import("@vreko/intelligence");
 
 			const instances = new Map<string, InstanceType<typeof SyncWorker>>();
 
 			const getOrCreate = async (workspace: string, userId: string) => {
 				const key = `${workspace}:${userId}`;
 				if (!instances.has(key)) {
-					const store = new StateStore({ snapbackDir: join(workspace, ".snapback") });
+					const store = new StateStore({ vrekoDir: join(workspace, ".vreko") });
 					await store.load();
 					const worker = new SyncWorker(store, { userId, workspaceId: workspace });
 					await worker.init();
@@ -120,16 +120,16 @@ describe("daemon SyncWorker integration", () => {
 		});
 
 		it("should cleanup all workers on stopAll", async () => {
-			const { SyncWorker, StateStore } = await import("@snapback/intelligence");
+			const { SyncWorker, StateStore } = await import("@vreko/intelligence");
 
 			const instances = new Map<string, InstanceType<typeof SyncWorker>>();
 
 			// Create multiple workers
 			for (let i = 0; i < 3; i++) {
 				const workspace = join(TEST_DIR, `ws${i}`);
-				mkdirSync(join(workspace, ".snapback"), { recursive: true });
+				mkdirSync(join(workspace, ".vreko"), { recursive: true });
 
-				const store = new StateStore({ snapbackDir: join(workspace, ".snapback") });
+				const store = new StateStore({ vrekoDir: join(workspace, ".vreko") });
 				await store.load();
 
 				const worker = new SyncWorker(store, {
@@ -155,23 +155,23 @@ describe("daemon SyncWorker integration", () => {
 	});
 
 	describe("error handling", () => {
-		it("should handle missing snapback directory gracefully", async () => {
-			const { StateStore } = await import("@snapback/intelligence");
+		it("should handle missing vreko directory gracefully", async () => {
+			const { StateStore } = await import("@vreko/intelligence");
 
 			// Non-existent path
 			const store = new StateStore({
-				snapbackDir: join(TEST_DIR, "nonexistent", ".snapback"),
+				vrekoDir: join(TEST_DIR, "nonexistent", ".vreko"),
 			});
 
 			// Should create directory on load
 			await store.load();
-			expect(existsSync(join(TEST_DIR, "nonexistent", ".snapback"))).toBe(true);
+			expect(existsSync(join(TEST_DIR, "nonexistent", ".vreko"))).toBe(true);
 		});
 
 		it("should emit error events without crashing", async () => {
-			const { SyncWorker, StateStore } = await import("@snapback/intelligence");
+			const { SyncWorker, StateStore } = await import("@vreko/intelligence");
 
-			const store = new StateStore({ snapbackDir: join(TEST_DIR, ".snapback") });
+			const store = new StateStore({ vrekoDir: join(TEST_DIR, ".vreko") });
 			await store.load();
 
 			const worker = new SyncWorker(store, {

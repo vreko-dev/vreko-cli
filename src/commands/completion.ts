@@ -7,13 +7,13 @@
  * @example
  * ```bash
  * # Bash - add to ~/.bashrc
- * source <(snap completion bash)
+ * source <(vr completion bash)
  *
  * # Zsh - add to ~/.zshrc
- * source <(snap completion zsh)
+ * source <(vr completion zsh)
  *
  * # Fish
- * snap completion fish > ~/.config/fish/completions/snap.fish
+ * vr completion fish > ~/.config/fish/completions/snap.fish
  * ```
  *
  * @module commands/completion
@@ -24,6 +24,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import chalk from "chalk";
 import { Command } from "commander";
+import { print } from "../utils/print.js";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
@@ -53,13 +54,13 @@ export function createCompletionCommand(): Command {
 			`
 Examples:
   ${chalk.gray("# Bash (add to ~/.bashrc)")}
-  ${chalk.cyan("source <(snap completion bash)")}
+  ${chalk.cyan("source <(vr completion bash)")}
 
   ${chalk.gray("# Zsh (add to ~/.zshrc)")}
-  ${chalk.cyan("source <(snap completion zsh)")}
+  ${chalk.cyan("source <(vr completion zsh)")}
 
   ${chalk.gray("# Fish")}
-  ${chalk.cyan("snap completion fish > ~/.config/fish/completions/snap.fish")}
+  ${chalk.cyan("vr completion fish > ~/.config/fish/completions/vr.fish")}
 `,
 		)
 		.action(async (shell: string) => {
@@ -67,18 +68,15 @@ Examples:
 			const validShells = ["bash", "zsh", "fish"];
 
 			if (!validShells.includes(shellLower)) {
-				console.error(chalk.red(`Unknown shell: ${shell}`));
-				console.error(chalk.gray(`Supported shells: ${validShells.join(", ")}`));
 				process.exit(1);
 			}
 
 			const script = await loadCompletionScript(shellLower);
 
 			if (!script) {
-				console.error(chalk.red(`Completion script not found for ${shell}`));
 				process.exit(1);
 			}
 
-			console.log(script);
+			print(script);
 		});
 }

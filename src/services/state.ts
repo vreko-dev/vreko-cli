@@ -55,7 +55,7 @@ export interface UserPreferences {
 	};
 }
 
-export interface SnapBackState {
+export interface VrekoState {
 	version: number;
 	pioneer: PioneerState;
 	preferences: UserPreferences;
@@ -122,13 +122,14 @@ const SCHEMA = {
 // =============================================================================
 
 class StateManager {
-	private conf: Conf<SnapBackState>;
-	private cache: SnapBackState | null = null;
+	private conf: Conf<VrekoState>;
+	private cache: VrekoState | null = null;
 
 	constructor() {
-		this.conf = new Conf<SnapBackState>({
-			projectName: "snapback",
+		this.conf = new Conf<VrekoState>({
+			projectName: "vreko",
 			projectVersion: "1.0.0",
+			// biome-ignore lint/suspicious/noExplicitAny: Conf<T> schema type is too narrow for Zod-inferred schema
 			schema: SCHEMA as any,
 			defaults: {
 				version: 1,
@@ -207,14 +208,14 @@ class StateManager {
 	/**
 	 * Export state for backup
 	 */
-	export(): SnapBackState {
+	export(): VrekoState {
 		return JSON.parse(JSON.stringify(this.conf.store));
 	}
 
 	/**
 	 * Import state from backup
 	 */
-	import(state: SnapBackState): void {
+	import(state: VrekoState): void {
 		if (state.version !== this.conf.get("version")) {
 			throw new Error("State version mismatch");
 		}

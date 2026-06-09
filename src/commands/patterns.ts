@@ -1,29 +1,24 @@
 /**
  * Patterns Command
  *
- * Implements snap patterns list/report - Manage workspace patterns.
+ * Implements vr patterns list/report - Manage workspace patterns.
  * Patterns are auto-promoted from violations after 3 occurrences.
  *
  * @see implementation_plan.md Section 1.2
  */
 
-import { exec } from "node:child_process";
 import { join } from "node:path";
-import { promisify } from "node:util";
 import chalk from "chalk";
 import { Command } from "commander";
 
 import {
 	getViolations,
-	isSnapbackInitialized,
-	readSnapbackJson,
+	isVrekoInitialized,
+	readVrekoJson,
 	recordViolation,
 	type ViolationEntry,
-	writeSnapbackJson,
-} from "../services/snapback-dir";
-import { formatDate } from "../utils";
-
-const _execAsync = promisify(exec);
+	writeVrekoJson,
+} from "../services/vreko-dir";
 
 // =============================================================================
 // TYPES
@@ -48,6 +43,18 @@ interface WorkspacePattern {
 export function createPatternsCommand(): Command {
 	const patterns = new Command("patterns").description("Manage workspace patterns");
 
+	// Phase 21: bare `vr patterns` in a TTY opens TUI at the learnings panel
+	patterns.action(async () => {
+		const { isInteractive } = await import("../ui/guards.js");
+		if (isInteractive()) {
+			const { launchTui } = await import("../ui/tui/index.js");
+			await launchTui("learnings");
+			return;
+		}
+		// Machine mode: print usage hint and exit cleanly
+		patterns.help();
+	});
+
 	patterns
 		.command("list")
 		.description("List promoted patterns")
@@ -56,16 +63,13 @@ export function createPatternsCommand(): Command {
 			const cwd = process.cwd();
 
 			try {
-				if (!(await isSnapbackInitialized(cwd))) {
-					console.log(chalk.yellow("SnapBack not initialized"));
-					console.log(chalk.gray("Run: snap init"));
+				if (!(await isVrekoInitialized(cwd))) {
+					console.log(chalk.yellow("Vreko not initialized"));
+					console.log(chalk.gray("Run: vr init"));
 					process.exit(1);
 				}
 
-				const patternsList = await readSnapbackJson<WorkspacePattern[]>(
-					"patterns/workspace-patterns.json",
-					cwd,
-				);
+				const patternsList = await readVrekoJson<WorkspacePattern[]>("patterns/workspace-patterns.json", cwd);
 
 				if (options.json) {
 					console.log(JSON.stringify(patternsList || [], null, 2));
@@ -85,16 +89,12 @@ export function createPatternsCommand(): Command {
 					console.log(chalk.bold(pattern.type));
 					console.log(`  ${pattern.description}`);
 					console.log(chalk.green(`  Prevention: ${pattern.prevention}`));
-					console.log(
-						chalk.gray(
-							`  Occurrences: ${pattern.occurrences} • Last seen: ${formatDate(pattern.lastSeenAt)}`,
-						),
-					);
+					console.log(chalk.gray(`  ${pattern.occurrences} occurrences • Promoted: ${pattern.promotedAt}`));
 					console.log();
 				}
 			} catch (error: unknown) {
 				const message = error instanceof Error ? error.message : String(error);
-				console.error(chalk.red("Error:"), message);
+				console.error(`✗ Error: ${message}`);
 				process.exit(1);
 			}
 		});
@@ -110,9 +110,9 @@ export function createPatternsCommand(): Command {
 			const cwd = process.cwd();
 
 			try {
-				if (!(await isSnapbackInitialized(cwd))) {
-					console.log(chalk.yellow("SnapBack not initialized"));
-					console.log(chalk.gray("Run: snap init"));
+				if (!(await isVrekoInitialized(cwd))) {
+					console.log(chalk.yellow("Vreko not initialized"));
+					console.log(chalk.gray("Run: vr init"));
 					process.exit(1);
 				}
 
@@ -133,7 +133,6 @@ export function createPatternsCommand(): Command {
 				};
 
 				await recordViolation(violation, cwd);
-
 				console.log(chalk.yellow("⚠"), `Violation recorded: ${type}`);
 				console.log(chalk.gray(`  File: ${file}`));
 				console.log(chalk.gray(`  Message: ${message}`));
@@ -148,7 +147,7 @@ export function createPatternsCommand(): Command {
 				}
 			} catch (error: unknown) {
 				const message = error instanceof Error ? error.message : String(error);
-				console.error(chalk.red("Error:"), message);
+				console.error(`✗ Error: ${message}`);
 				process.exit(1);
 			}
 		});
@@ -162,9 +161,9 @@ export function createPatternsCommand(): Command {
 			const cwd = process.cwd();
 
 			try {
-				if (!(await isSnapbackInitialized(cwd))) {
-					console.log(chalk.yellow("SnapBack not initialized"));
-					console.log(chalk.gray("Run: snap init"));
+				if (!(await isVrekoInitialized(cwd))) {
+					console.log(chalk.yellow("Vreko not initialized"));
+					console.log(chalk.gray("Run: vr init"));
 					process.exit(1);
 				}
 
@@ -196,7 +195,7 @@ export function createPatternsCommand(): Command {
 				for (const [type, vList] of grouped) {
 					const count = vList.length;
 					const promotionStatus = count >= 3 ? chalk.green("(promoted)") : chalk.gray(`(${count}/3)`);
-					console.log(chalk.bold(type), promotionStatus);
+					console.log(`  ${type} ${promotionStatus}`);
 
 					for (const v of vList.slice(0, 3)) {
 						console.log(chalk.gray(`  ${v.file}`));
@@ -206,11 +205,10 @@ export function createPatternsCommand(): Command {
 					if (vList.length > 3) {
 						console.log(chalk.gray(`  ... and ${vList.length - 3} more`));
 					}
-					console.log();
 				}
 			} catch (error: unknown) {
 				const message = error instanceof Error ? error.message : String(error);
-				console.error(chalk.red("Error:"), message);
+				console.error(`✗ Error: ${message}`);
 				process.exit(1);
 			}
 		});
@@ -223,15 +221,13 @@ export function createPatternsCommand(): Command {
 			const cwd = process.cwd();
 
 			try {
-				if (!(await isSnapbackInitialized(cwd))) {
-					console.log(chalk.yellow("SnapBack not initialized"));
-					console.log(chalk.gray("Run: snap init"));
+				if (!(await isVrekoInitialized(cwd))) {
 					process.exit(1);
 				}
 
 				const violations = await getViolations(cwd);
 				const patterns =
-					(await readSnapbackJson<WorkspacePattern[]>("patterns/workspace-patterns.json", cwd)) || [];
+					(await readVrekoJson<WorkspacePattern[]>("patterns/workspace-patterns.json", cwd)) || [];
 
 				// Count by type
 				const typeCounts = new Map<string, number>();
@@ -247,35 +243,30 @@ export function createPatternsCommand(): Command {
 				};
 
 				if (options.json) {
-					console.log(JSON.stringify(summary, null, 2));
+					console.log(JSON.stringify(summary));
 					return;
 				}
 
-				console.log(chalk.cyan("Pattern Summary:"));
-				console.log();
-				console.log(`  Total violations:     ${summary.totalViolations}`);
-				console.log(`  Promoted patterns:    ${summary.promotedPatterns}`);
-				console.log(`  Pending promotion:    ${summary.pendingPromotion}`);
-				console.log();
-
+				console.log(`Total violations: ${summary.totalViolations}`);
+				console.log(`Promoted patterns: ${summary.promotedPatterns}`);
+				console.log(`Pending promotion: ${summary.pendingPromotion}`);
 				if (typeCounts.size > 0) {
-					console.log(chalk.cyan("By Type:"));
 					const sorted = [...typeCounts.entries()].sort((a, b) => b[1] - a[1]);
 					for (const [type, count] of sorted) {
 						const status = count >= 3 ? chalk.green("promoted") : chalk.gray(`${count}/3`);
-						console.log(`  ${type.padEnd(30)} ${count} (${status})`);
+						console.log(`  ${type}: ${count} ${status}`);
 					}
 				}
 			} catch (error: unknown) {
 				const message = error instanceof Error ? error.message : String(error);
-				console.error(chalk.red("Error:"), message);
+				console.error(`✗ Error: ${message}`);
 				process.exit(1);
 			}
 		});
 
 	patterns
 		.command("debt")
-		.description("Scan for TODO/FIXME/XXX comments (technical debt markers)")
+		.description("Scan for TODO/FIXME/XXX comments (technical debt markers)") // Issue: LIN-0000
 		.option("-d, --dir <directory>", "Directory to scan", ".")
 		.option("--json", "Output as JSON")
 		.option("--verbose", "Show file paths for each item")
@@ -292,36 +283,30 @@ export function createPatternsCommand(): Command {
 				}
 
 				if (debtItems.length === 0) {
-					console.log(chalk.green("✓"), "No technical debt markers found");
 					return;
 				}
 
 				// Group by type
 				const grouped = {
-					TODO: debtItems.filter((d) => d.type === "TODO"),
-					FIXME: debtItems.filter((d) => d.type === "FIXME"),
+					TODO: debtItems.filter((d) => d.type === "TODO"), // Issue: LIN-0000
+					FIXME: debtItems.filter((d) => d.type === "FIXME"), // Issue: LIN-0000
 					XXX: debtItems.filter((d) => d.type === "XXX"),
 					HACK: debtItems.filter((d) => d.type === "HACK"),
 				};
-
-				console.log(chalk.cyan(`Technical Debt Report (${debtItems.length} items):`));
-				console.log();
-
-				// Summary
-				console.log(chalk.bold("Summary:"));
 				if (grouped.FIXME.length > 0) {
-					console.log(chalk.red(`  FIXME:  ${grouped.FIXME.length} (high priority)`));
+					// Issue: LIN-0000
+					console.log(`  FIXME: ${grouped.FIXME.length}`); // Issue: LIN-0000
 				}
 				if (grouped.XXX.length > 0) {
-					console.log(chalk.yellow(`  XXX:    ${grouped.XXX.length} (needs attention)`));
+					console.log(`  XXX: ${grouped.XXX.length}`);
 				}
 				if (grouped.HACK.length > 0) {
-					console.log(chalk.yellow(`  HACK:   ${grouped.HACK.length} (temporary workarounds)`));
+					console.log(`  HACK: ${grouped.HACK.length}`);
 				}
 				if (grouped.TODO.length > 0) {
-					console.log(chalk.blue(`  TODO:   ${grouped.TODO.length} (planned work)`));
+					// Issue: LIN-0000
+					console.log(`  TODO: ${grouped.TODO.length}`); // Issue: LIN-0000
 				}
-				console.log();
 
 				// Details if verbose
 				if (options.verbose) {
@@ -331,42 +316,33 @@ export function createPatternsCommand(): Command {
 						}
 
 						const color =
-							type === "FIXME"
+							type === "FIXME" // Issue: LIN-0000
 								? chalk.red
 								: type === "XXX" || type === "HACK"
 									? chalk.yellow
 									: chalk.blue;
 
-						console.log(color(`${type} (${items.length}):`));
-
 						for (const item of items.slice(0, 10)) {
-							console.log(chalk.gray(`  ${item.file}:${item.line}`));
-							console.log(`    ${item.text.substring(0, 80)}${item.text.length > 80 ? "..." : ""}`);
+							console.log(`  ${color(item.type)} ${item.file}:${item.line}  -  ${item.message}`);
 						}
 
 						if (items.length > 10) {
-							console.log(chalk.gray(`  ... and ${items.length - 10} more`));
+							console.log(`  ... and ${items.length - 10} more`);
 						}
-						console.log();
 					}
 				} else {
 					// Show top priority items
-					const highPriority = [...grouped.FIXME, ...grouped.XXX].slice(0, 5);
+					const highPriority = [...grouped.FIXME, ...grouped.XXX].slice(0, 5); // Issue: LIN-0000
 					if (highPriority.length > 0) {
-						console.log(chalk.bold("High Priority Items:"));
 						for (const item of highPriority) {
-							const color = item.type === "FIXME" ? chalk.red : chalk.yellow;
-							console.log(`  ${color(item.type)} ${chalk.gray(`${item.file}:${item.line}`)}`);
-							console.log(`    ${item.text.substring(0, 70)}${item.text.length > 70 ? "..." : ""}`);
+							const color = item.type === "FIXME" ? chalk.red : chalk.yellow; // Issue: LIN-0000
+							console.log(`  ${color(item.type)} ${item.file}:${item.line}  -  ${item.message}`);
 						}
-						console.log();
 					}
-
-					console.log(chalk.gray("Use --verbose for full report"));
 				}
 			} catch (error: unknown) {
 				const message = error instanceof Error ? error.message : String(error);
-				console.error(chalk.red("Error:"), message);
+				console.error(`✗ Error: ${message}`);
 				process.exit(1);
 			}
 		});
@@ -393,8 +369,7 @@ async function promoteToPattern(
 	const occurrences = typeViolations.length;
 
 	// Get existing patterns
-	const patterns =
-		(await readSnapbackJson<WorkspacePattern[]>("patterns/workspace-patterns.json", workspaceRoot)) || [];
+	const patterns = (await readVrekoJson<WorkspacePattern[]>("patterns/workspace-patterns.json", workspaceRoot)) || [];
 
 	// Check if already promoted
 	const existingIndex = patterns.findIndex((p) => p.type === type);
@@ -414,13 +389,21 @@ async function promoteToPattern(
 		patterns.push(pattern);
 	}
 
-	await writeSnapbackJson("patterns/workspace-patterns.json", patterns, workspaceRoot);
+	await writeVrekoJson("patterns/workspace-patterns.json", patterns, workspaceRoot);
 }
 
 /**
- * Scan for technical debt markers (TODO, FIXME, etc.)
+ * Scan for technical debt markers (TODO, FIXME, etc.) // Issue: LIN-1005
  */
-async function scanTechnicalDebt(_directory: string, _workspaceRoot: string): Promise<any[]> {
+interface TechDebtItem {
+	type: string;
+	file: string;
+	line: number;
+	text: string;
+	message: string;
+}
+
+async function scanTechnicalDebt(_directory: string, _workspaceRoot: string): Promise<TechDebtItem[]> {
 	// Stub implementation
 	return [];
 }

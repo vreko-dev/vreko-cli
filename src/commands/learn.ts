@@ -1,23 +1,26 @@
 /**
  * Learn Command
  *
- * Implements snap learn - Record learnings for future reference.
- * Learnings are stored in .snapback/learnings/user-learnings.jsonl
+ * Implements vr learn - Record learnings for future reference.
+ * Primary store: service IPC → knowledge.db (same store as MCP vreko_learn)
+ * Fallback store: .vreko/learnings/user-learnings.jsonl (service unavailable)
+ *
+ * Report card v2 fix: CLI and MCP now write to the same learning store
+ * by routing through service IPC when available.
  *
  * @see implementation_plan.md Section 1.2
  */
 
 import chalk from "chalk";
 import { Command } from "commander";
-
+import { connectToDaemon, isDaemonAvailable } from "../services/service-client";
 import {
 	generateId,
 	getLearnings,
-	isSnapbackInitialized,
+	isVrekoInitialized,
 	type LearningEntry,
 	recordLearning,
-} from "../services/snapback-dir";
-import { formatDate } from "../utils";
+} from "../services/vreko-dir";
 
 // =============================================================================
 // COMMAND DEFINITION
@@ -38,9 +41,9 @@ export function createLearnCommand(): Command {
 
 			try {
 				// Check if initialized
-				if (!(await isSnapbackInitialized(cwd))) {
-					console.log(chalk.yellow("SnapBack not initialized in this workspace"));
-					console.log(chalk.gray("Run: snap init"));
+				if (!(await isVrekoInitialized(cwd))) {
+					console.log(chalk.yellow("🦎 Vreko not initialized in this workspace"));
+					console.log(chalk.gray("Run: vr init"));
 					process.exit(1);
 				}
 
@@ -52,6 +55,13 @@ export function createLearnCommand(): Command {
 					process.exit(1);
 				}
 
+				// Credit estimate: learning capture persists to knowledge base (1 credit when synced).
+				console.log(
+					chalk.gray(
+						"  Credit estimate: ~1 credit (memory_sync). Learning stored locally first, synced on next vr sync.",
+					),
+				);
+
 				// Create learning entry
 				const learning: LearningEntry = {
 					id: generateId("L"),
@@ -62,18 +72,54 @@ export function createLearnCommand(): Command {
 					createdAt: new Date().toISOString(),
 				};
 
-				await recordLearning(learning, cwd);
+				// Report card v2 fix: try service first (writes to knowledge.db = same store as MCP)
+				// Fall back to local JSONL if service unavailable
+				let storedViaDaemon = false;
+				if (await isDaemonAvailable()) {
+					try {
+						const client = await connectToDaemon();
+						await client.learning.add({
+							workspace: cwd,
+							type: learning.type,
+							trigger: learning.trigger,
+							action: learning.action,
+							source: learning.source ?? "cli",
+						});
+						storedViaDaemon = true;
+					} catch {
+						// Daemon write failed  -  fall through to local JSONL
+					}
+				}
 
-				console.log(chalk.green("✓"), "Learning recorded");
+				if (!storedViaDaemon) {
+					// Fallback: write to local JSONL (service unavailable or write failed)
+					await recordLearning(learning, cwd);
+				}
+				console.log(chalk.green("✓"), "Learning recorded:", chalk.cyan(trigger), "→", action);
 				console.log();
 				console.log(`  ${chalk.cyan("Type:")}    ${formatType(learning.type)}`);
 				console.log(`  ${chalk.cyan("Trigger:")} ${trigger}`);
 				console.log(`  ${chalk.cyan("Action:")}  ${action}`);
 				console.log();
-				console.log(chalk.gray(`Query with: snap learn list --keyword "${trigger.split(" ")[0]}"`));
+				if (!storedViaDaemon) {
+					// BUG 4 fix: distinguish "service not running" from "service IPC method failed"
+					const daemonRunning = await isDaemonAvailable();
+					if (daemonRunning) {
+						console.log(
+							chalk.yellow(
+								"   (Stored locally  -  service IPC error: storage will sync on next session)",
+							),
+						);
+					} else {
+						console.log(chalk.gray("   (Stored locally  -  start service for unified storage)"));
+						console.log(chalk.gray("   Start with: vr service start --detach"));
+					}
+					console.log();
+				}
+				console.log(chalk.gray(`Query with: vr learn list --keyword "${trigger.split(" ")[0]}"`));
 			} catch (error: unknown) {
 				const message = error instanceof Error ? error.message : String(error);
-				console.error(chalk.red("Error:"), message);
+				console.error(`✗ Error: ${message}`);
 				process.exit(1);
 			}
 		});
@@ -90,9 +136,9 @@ export function createLearnCommand(): Command {
 			const cwd = process.cwd();
 
 			try {
-				if (!(await isSnapbackInitialized(cwd))) {
-					console.log(chalk.yellow("SnapBack not initialized"));
-					console.log(chalk.gray("Run: snap init"));
+				if (!(await isVrekoInitialized(cwd))) {
+					console.log(chalk.yellow("🦎 Vreko not initialized"));
+					console.log(chalk.gray("Run: vr init"));
 					process.exit(1);
 				}
 
@@ -122,7 +168,7 @@ export function createLearnCommand(): Command {
 
 				if (recent.length === 0) {
 					console.log(chalk.yellow("No learnings found"));
-					console.log(chalk.gray('Record with: snap learn "trigger" "action"'));
+					console.log(chalk.gray('Record with: vr learn "trigger" "action"'));
 					return;
 				}
 
@@ -132,12 +178,12 @@ export function createLearnCommand(): Command {
 				for (const learning of recent) {
 					console.log(formatType(learning.type), chalk.bold(learning.trigger));
 					console.log(`  → ${learning.action}`);
-					console.log(chalk.gray(`  ${formatDate(learning.createdAt)} • ${learning.source}`));
+					console.log(chalk.gray(`  ${learning.createdAt} • ${learning.source}`));
 					console.log();
 				}
 			} catch (error: unknown) {
 				const message = error instanceof Error ? error.message : String(error);
-				console.error(chalk.red("Error:"), message);
+				console.error(`✗ Error: ${message}`);
 				process.exit(1);
 			}
 		});

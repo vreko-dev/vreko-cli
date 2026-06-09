@@ -1,7 +1,7 @@
 /**
  * Smart Errors Module
  *
- * World-class error handling with actionable suggestions.
+ * Structured error handling with actionable suggestions.
  * Inspired by: Rust compiler, GitHub CLI, Vercel CLI
  *
  * Features:
@@ -15,8 +15,9 @@
  * @module ui/errors
  */
 
-import boxen from "boxen";
+import { extractErrorCode } from "@vreko/contracts";
 import chalk from "chalk";
+import { cliState } from "../cli-state.js";
 
 // =============================================================================
 // TYPES
@@ -50,29 +51,29 @@ export const ERROR_SUGGESTIONS: ErrorSuggestion[] = [
 	{
 		pattern: /not logged in|unauthorized|401/i,
 		suggestion: "You need to authenticate first",
-		command: "snap login",
+		command: "vreko login",
 	},
 	{
 		pattern: /token expired|session expired/i,
 		suggestion: "Your session has expired. Please log in again",
-		command: "snap login",
+		command: "vreko login",
 	},
 	{
 		pattern: /invalid.*api.*key/i,
-		suggestion: "Your API key appears to be invalid. Get a new one at console.snapback.dev/settings",
-		command: "snap login --api-key <your-key>",
+		suggestion: "Your API key appears to be invalid. Get a new one at console.vreko.dev/app/settings/api-keys",
+		command: "vreko login --api-key <your-key>",
 	},
 
 	// Workspace errors
 	{
-		pattern: /not initialized|no.*\.snapback/i,
-		suggestion: "This workspace hasn't been set up for SnapBack yet",
-		command: "snap init",
+		pattern: /not initialized|no.*\.vreko/i,
+		suggestion: "This workspace hasn't been set up for Vreko yet",
+		command: "vreko init",
 	},
 	{
 		pattern: /already initialized/i,
-		suggestion: "SnapBack is already configured here. Use --force to reinitialize",
-		command: "snap init --force",
+		suggestion: "Vreko is already configured here. Use --force to reinitialize",
+		command: "vreko init --force",
 	},
 
 	// File errors
@@ -93,17 +94,17 @@ export const ERROR_SUGGESTIONS: ErrorSuggestion[] = [
 	{
 		pattern: /ECONNREFUSED|connection refused/i,
 		suggestion: "Cannot connect to the server. Check your internet connection",
-		command: "snap doctor",
+		command: "vreko doctor",
 	},
 	{
 		pattern: /ETIMEDOUT|timeout|timed out/i,
 		suggestion: "The request timed out. The server may be slow or unreachable",
-		command: "snap doctor",
+		command: "vreko doctor",
 	},
 	{
 		pattern: /ENOTFOUND|DNS|network/i,
 		suggestion: "Network error. Check your internet connection and try again",
-		command: "snap doctor",
+		command: "vreko doctor",
 	},
 
 	// Git errors
@@ -121,14 +122,14 @@ export const ERROR_SUGGESTIONS: ErrorSuggestion[] = [
 	{
 		pattern: /invalid.*config|parse.*error.*json/i,
 		suggestion: "The configuration file is malformed. Try resetting it",
-		command: "snap config path",
+		command: "vreko config path",
 	},
 
 	// MCP errors
 	{
 		pattern: /mcp.*not configured|no.*ai.*tools/i,
 		suggestion: "No AI tools are configured for MCP integration",
-		command: "snap tools configure",
+		command: "vreko tools configure",
 	},
 ];
 
@@ -137,54 +138,82 @@ export const ERROR_SUGGESTIONS: ErrorSuggestion[] = [
 // =============================================================================
 
 /**
- * Known commands with descriptions for better suggestions
+ * Known commands with descriptions for better suggestions.
+ * Keep this in sync with the commands registered in src/index.ts.
  */
 const KNOWN_COMMANDS: Array<{ name: string; description: string; aliases?: string[] }> = [
-	{ name: "login", description: "Authenticate with SnapBack" },
-	{ name: "logout", description: "Log out of SnapBack" },
+	// Auth
+	{ name: "login", description: "Authenticate with Vreko" },
+	{ name: "logout", description: "Log out of Vreko" },
 	{ name: "whoami", description: "Show current user" },
+	{ name: "set-key", description: "Set API key directly" },
+	{ name: "workspaces", description: "List connected workspaces" },
+	// Workspace management
 	{ name: "init", description: "Initialize workspace" },
 	{ name: "status", description: "Show workspace status" },
-	{ name: "fix", description: "Apply fixes to code" },
+	{ name: "analyze", description: "Run workspace intelligence analysis" },
+	{ name: "fix", description: "Auto-fix detected issues" },
+	{ name: "claude-sync", description: "Generate Claude Code integration files" },
+	// Protection
 	{ name: "protect", description: "Protect files from changes" },
-	{ name: "session", description: "Manage sessions" },
-	{ name: "context", description: "Get context for files" },
-	{ name: "validate", description: "Validate patterns" },
+	{ name: "session", description: "Manage work sessions" },
+	// §15.1: snapshot has aliases ss and snap; use --list to list snapshots
+	{ name: "snapshot", description: "Create a code snapshot (--list to list)", aliases: ["ss", "snap"] }, // tui-vocab-allowed
+	// Intelligence
+	{ name: "context", description: "Get relevant context before starting work" },
+	{ name: "validate", description: "Validate patterns and changes" },
 	{ name: "stats", description: "Show statistics" },
-	{ name: "learn", description: "Learn from patterns" },
-	{ name: "patterns", description: "Manage patterns" },
-	{ name: "watch", description: "Watch for changes" },
-	{ name: "tools", description: "Configure AI tools" },
-	{ name: "mcp", description: "Run MCP server" },
-	{ name: "config", description: "Manage configuration" },
-	{ name: "doctor", description: "Diagnose issues" },
-	{ name: "upgrade", description: "Upgrade SnapBack" },
-	{ name: "analyze", description: "Analyze file risks" },
-	// §15.1: snapshot has aliases ss and snap
-	{ name: "snapshot", description: "Create a code snapshot", aliases: ["ss", "snap"] },
-	{ name: "list", description: "List snapshots" },
+	// Momentum scoring
+	{ name: "sync", description: "Collect signals for momentum scoring" },
+	{ name: "metrics", description: "Show momentum scores for files", aliases: ["m"] },
+	{ name: "refresh", description: "Incremental score update" },
+	// Learning
+	{ name: "learn", description: "Record a learning or pattern" },
+	{ name: "patterns", description: "Manage learned patterns" },
+	{ name: "consolidate", description: "Consolidate duplicate learnings" },
+	// File analysis
 	{ name: "check", description: "Pre-commit risk check" },
-	{ name: "interactive", description: "Interactive mode" },
+	{ name: "risk-analyze", description: "Analyze file risk signals" },
+	{ name: "watch", description: "Watch files for AI-driven changes" },
+	// MCP / ACP integration
+	{ name: "tools", description: "Configure AI tools for MCP integration" },
+	{ name: "mcp", description: "MCP server management" },
+	{ name: "acp", description: "Agent Communication Protocol integration" },
+	// Daemon / service
+	{ name: "daemon", description: "Manage the Vreko service" },
+	{ name: "service", description: "Manage the Vreko system service" },
+	{ name: "baseline", description: "Manage workspace baselines" },
+	// Interactive / guided
+	{ name: "interactive", description: "Interactive guided workflow" },
+	// Polish / admin
+	{ name: "config", description: "Manage configuration" },
+	{ name: "doctor", description: "Diagnose installation and health" },
+	{ name: "diagnostics", description: "Advanced troubleshooting tools" },
+	{ name: "upgrade", description: "Upgrade Vreko" },
+	{ name: "undo", description: "Undo recent operations" },
+	{ name: "alias", description: "Create command shortcuts" },
+	{ name: "completion", description: "Generate shell completion scripts" },
 	{ name: "help", description: "Show help" },
 ];
 
 /**
  * Intent-based mappings for better suggestions
  * Maps common user intents to the correct command
- * §15.2: "snap" MUST suggest "snapshot" first
+ * §15.2: "snap" MUST suggest "snapshot" first // tui-vocab-allowed
  */
 const INTENT_MAPPINGS: Record<string, string> = {
-	// Snapshot-related intents
-	snap: "snapshot",
-	ss: "snapshot",
-	snapshot: "snapshot",
-	save: "snapshot",
-	backup: "snapshot",
-	store: "snapshot",
-	capture: "snapshot",
-	// Check-related intents
+	// Snapshot-related intents  -  §15.2: "snap" MUST suggest "snapshot" first // tui-vocab-allowed
+	snap: "snapshot", // tui-vocab-allowed
+	ss: "snapshot", // tui-vocab-allowed
+	snapshot: "snapshot", // tui-vocab-allowed
+	save: "snapshot", // tui-vocab-allowed
+	backup: "snapshot", // tui-vocab-allowed
+	store: "snapshot", // tui-vocab-allowed
+	capture: "snapshot", // tui-vocab-allowed
+	// "list" is removed; snapshots are listed via `snapshot --list`
+	list: "snapshot", // tui-vocab-allowed
+	// Check-related intents (not "validate"  -  that is a real registered command)
 	verify: "check",
-	validate: "check",
 	test: "check",
 	// Auth-related intents
 	auth: "login",
@@ -232,7 +261,7 @@ function levenshteinDistance(a: string, b: string): number {
 export function findSimilarCommands(input: string, maxSuggestions = 3): string[] {
 	const inputLower = input.toLowerCase();
 
-	// §15.2: Check intent mapping first (e.g., "snap" -> "snapshot")
+	// §15.2: Check intent mapping first (e.g., "snap" -> "snapshot") // tui-vocab-allowed
 	const intentMatch = INTENT_MAPPINGS[inputLower];
 	if (intentMatch) {
 		const cmd = KNOWN_COMMANDS.find((c) => c.name === intentMatch);
@@ -278,6 +307,11 @@ export function findSimilarCommands(input: string, maxSuggestions = 3): string[]
 export function displaySmartError(error: Error | SmartError | string): void {
 	const errorData = normalizeError(error);
 
+	if (cliState.json) {
+		process.stdout.write(`${JSON.stringify({ error: errorData.message, code: errorData.code || null })}\n`);
+		return;
+	}
+
 	// Build error content
 	const lines: string[] = [];
 
@@ -319,15 +353,7 @@ export function displaySmartError(error: Error | SmartError | string): void {
 		lines.push(chalk.gray(`📚 More info: ${errorData.docLink}`));
 	}
 
-	// Display in box
-	console.error(
-		boxen(lines.join("\n"), {
-			borderColor: "red",
-			borderStyle: "round",
-			padding: 1,
-			margin: { top: 1, bottom: 1, left: 0, right: 0 },
-		}),
-	);
+	console.error(lines.join("\n"));
 }
 
 /**
@@ -343,19 +369,13 @@ export function displayUnknownCommandError(command: string): void {
 	if (suggestions.length > 0) {
 		lines.push(chalk.yellow("Did you mean:"));
 		for (const suggestion of suggestions) {
-			lines.push(chalk.cyan(`  $ snap ${suggestion}`));
+			lines.push(chalk.cyan(`  $ vreko ${suggestion}`));
 		}
 	} else {
-		lines.push(chalk.gray("Run 'snap --help' to see available commands"));
+		lines.push(chalk.gray("Run 'vreko --help' to see available commands"));
 	}
 
-	console.error(
-		boxen(lines.join("\n"), {
-			borderColor: "yellow",
-			borderStyle: "round",
-			padding: 1,
-		}),
-	);
+	console.error(lines.join("\n"));
 }
 
 /**
@@ -402,25 +422,6 @@ function findErrorSuggestion(message: string): Partial<SmartError> {
 	return {};
 }
 
-/**
- * Extract error code from error object
- */
-function extractErrorCode(error: Error & { code?: string }): string | undefined {
-	if (error.code) {
-		return error.code;
-	}
-
-	// Extract from error name
-	if (error.name && error.name !== "Error") {
-		return error.name
-			.toUpperCase()
-			.replace(/ERROR$/, "")
-			.replace(/\s+/g, "_");
-	}
-
-	return undefined;
-}
-
 // =============================================================================
 // HELPER FUNCTIONS
 // =============================================================================
@@ -461,6 +462,130 @@ export function withSmartErrors<T extends (...args: unknown[]) => Promise<unknow
 			process.exit(1);
 		}
 	};
+}
+
+// =============================================================================
+// ERROR UTILITIES
+// =============================================================================
+
+// Re-export shared error utilities from @vreko/contracts
+export { extractErrorMessage as getErrorMessage, hasErrorCode } from "@vreko/contracts";
+
+// Import Result pattern for gradual migration
+import { type CliErr, err, errFromError } from "../result.js";
+
+/**
+ * Handle error in CLI command - display smart error and exit
+ * Convenience wrapper for consistent error handling
+ *
+ * @deprecated Prefer handleCommandErrorResult() + exitWithResult() for testable code.
+ * This function will be removed in a future version.
+ */
+export function handleCommandError(error: unknown, exitCode = 1): never {
+	displaySmartError(error instanceof Error ? error : String(error));
+	process.exit(exitCode);
+}
+
+/**
+ * Handle error in CLI command - returns Result instead of exiting
+ *
+ * SECURITY: This enables testable error handling without process.exit().
+ * Caller should use exitWithResult() at the top level to actually exit.
+ *
+ * @example
+ * ```typescript
+ * import { exitWithResult } from "../result.js";
+ *
+ * const result = handleCommandErrorResult(error);
+ * exitWithResult(result);
+ * ```
+ */
+export function handleCommandErrorResult(error: unknown, exitCode = 1): CliErr {
+	// Display the error (side effect, but necessary for UX)
+	displaySmartError(error instanceof Error ? error : String(error));
+
+	// Return error result for caller to handle exit
+	return errFromError(error, { exitCode });
+}
+
+/**
+ * Create error result from exception without displaying
+ * Use when you want to handle display separately
+ */
+export function toCliError(error: unknown, exitCode = 1): CliErr {
+	if (typeof error === "string") {
+		const suggestion = findErrorSuggestion(error);
+		return err(error, {
+			code: "ERR_UNKNOWN",
+			exitCode,
+			...suggestion,
+		});
+	}
+
+	if (error instanceof Error) {
+		const suggestion = findErrorSuggestion(error.message);
+		return err(error.message, {
+			code: extractErrorCode(error) || "ERR_UNKNOWN",
+			exitCode,
+			...suggestion,
+		});
+	}
+
+	return err(String(error), { exitCode });
+}
+
+/**
+ * Truncate stack trace to specified number of lines
+ *
+ * @param stack - Full stack trace string
+ * @param maxLines - Maximum number of stack frames to keep (default: 5)
+ * @returns Truncated stack trace
+ *
+ * @example
+ * ```typescript
+ * const truncated = truncateStack(error.stack, 3);
+ * // Shows only first 3 frames + "... N more frames"
+ * ```
+ */
+export function truncateStack(stack: string | undefined, maxLines = 5): string {
+	if (!stack) {
+		return "";
+	}
+
+	const lines = stack.split("\n");
+	if (lines.length <= maxLines + 1) {
+		// +1 for error message line
+		return stack;
+	}
+
+	const kept = lines.slice(0, maxLines + 1);
+	// Calculate remaining: total lines - message line (1) - kept frames (maxLines)
+	const remaining = lines.length - 1 - maxLines;
+	return `${kept.join("\n")}\n    ... ${remaining} more frame${remaining > 1 ? "s" : ""}`;
+}
+
+/**
+ * Format error with truncated stack for CLI display
+ *
+ * @param error - Error object
+ * @param maxStackLines - Maximum stack frames to show (default: 5)
+ * @returns Formatted error string
+ */
+export function formatErrorForCLI(error: Error, maxStackLines = 5): string {
+	const message = error.message || "Unknown error";
+	const stack = truncateStack(error.stack, maxStackLines);
+
+	if (!stack) {
+		return message;
+	}
+
+	// Extract just the stack frames (skip the first line which is the message)
+	const stackLines = stack.split("\n").slice(1);
+	if (stackLines.length === 0) {
+		return message;
+	}
+
+	return `${message}\n${stackLines.join("\n")}`;
 }
 
 // =============================================================================

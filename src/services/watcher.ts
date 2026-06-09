@@ -6,7 +6,7 @@
  *
  * Watches for:
  * - File changes in workspace (for protection suggestions)
- * - .snapback/ changes (for pattern promotion)
+ * - .vreko/ changes (for pattern promotion)
  * - Config file changes (for auto-detection)
  *
  * Records behavioral signals:
@@ -24,14 +24,14 @@ import type { FSWatcher } from "chokidar";
 import chokidar from "chokidar";
 
 import {
-	appendSnapbackJsonl,
+	appendVrekoJsonl,
 	getProtectedFiles,
 	getViolations,
 	getWorkspaceDir,
-	isSnapbackInitialized,
+	isVrekoInitialized,
 	type LearningEntry,
-	loadSnapbackJsonl,
-} from "./snapback-dir";
+	loadVrekoJsonl,
+} from "./vreko-dir";
 
 // =============================================================================
 // TYPES
@@ -78,8 +78,8 @@ const DEFAULT_CONFIG: Partial<WatcherConfig> = {
 		"**/{node_modules,.git,.vscode,dist,.next,.nuxt,coverage}/**",
 		"**/*.log",
 		"**/.*cache*/**",
-		"**/.snapback/snapshots/**",
-		"**/.snapback/embeddings.db",
+		"**/.vreko/snapshots/**",
+		"**/.vreko/embeddings.db",
 	],
 };
 
@@ -108,7 +108,7 @@ const RISKY_CHANGE_PATTERNS = [
 // WATCHER CLASS
 // =============================================================================
 
-export class SnapbackWatcher extends EventEmitter {
+export class VrekoWatcher extends EventEmitter {
 	private watcher: FSWatcher | null = null;
 	private config: WatcherConfig;
 	private stats: WatcherStats;
@@ -136,9 +136,9 @@ export class SnapbackWatcher extends EventEmitter {
 			throw new Error("Watcher already started");
 		}
 
-		// Verify snapback is initialized
-		if (!(await isSnapbackInitialized(this.config.workspaceRoot))) {
-			throw new Error("SnapBack not initialized. Run: snap init");
+		// Verify vreko is initialized
+		if (!(await isVrekoInitialized(this.config.workspaceRoot))) {
+			throw new Error("Vreko not initialized. Run: vr init");
 		}
 
 		const { workspaceRoot, debounceMs, depth, ignored } = this.config;
@@ -170,8 +170,8 @@ export class SnapbackWatcher extends EventEmitter {
 				this.emit("error", error);
 			});
 
-		// Watch .snapback/ specifically for pattern promotion
-		this.watchSnapbackDir();
+		// Watch .vreko/ specifically for pattern promotion
+		this.watchVrekoDir();
 
 		// Start flush timer
 		this.startFlushTimer();
@@ -255,11 +255,11 @@ export class SnapbackWatcher extends EventEmitter {
 		this.log(`${type}: ${relativePath}${isCritical ? " [CRITICAL]" : ""}${isRisky ? " [RISKY]" : ""}`);
 	}
 
-	private watchSnapbackDir(): void {
-		const snapbackDir = getWorkspaceDir(this.config.workspaceRoot);
+	private watchVrekoDir(): void {
+		const vrekoDir = getWorkspaceDir(this.config.workspaceRoot);
 
 		// Watch violations.jsonl for auto-promotion
-		const violationsWatcher = chokidar.watch(`${snapbackDir}/patterns/violations.jsonl`, {
+		const violationsWatcher = chokidar.watch(`${vrekoDir}/patterns/violations.jsonl`, {
 			ignoreInitial: true,
 			awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 50 },
 		});
@@ -327,7 +327,7 @@ export class SnapbackWatcher extends EventEmitter {
 				type: "protection_added",
 				path,
 				timestamp: new Date().toISOString(),
-				suggestion: `Consider: snap protect add "${path}"`,
+				suggestion: `Consider: vr protect add "${path}"`,
 			});
 		}
 	}
@@ -358,7 +358,7 @@ export class SnapbackWatcher extends EventEmitter {
 		this.signalBuffer = [];
 
 		for (const signal of signals) {
-			await appendSnapbackJsonl("learnings/behavioral-signals.jsonl", signal, this.config.workspaceRoot);
+			await appendVrekoJsonl("learnings/behavioral-signals.jsonl", signal, this.config.workspaceRoot);
 			this.stats.signalsRecorded++;
 		}
 	}
@@ -371,13 +371,13 @@ export class SnapbackWatcher extends EventEmitter {
 		return Object.values(watched).reduce((acc, files) => acc + files.length, 0);
 	}
 
-	private log(message: string, isError = false): void {
+	private log(_message: string, isError = false): void {
 		if (this.config.verbose) {
-			const prefix = "[SnapBack Watch]";
+			const _prefix = "[Vreko Watch]";
 			if (isError) {
-				console.error(`${prefix} ${message}`);
+				// intentionally empty
 			} else {
-				console.log(`${prefix} ${message}`);
+				// intentionally empty
 			}
 		}
 	}
@@ -390,8 +390,8 @@ export class SnapbackWatcher extends EventEmitter {
 /**
  * Create a watcher for a workspace
  */
-export function createWatcher(config: WatcherConfig): SnapbackWatcher {
-	return new SnapbackWatcher(config);
+export function createWatcher(config: WatcherConfig): VrekoWatcher {
+	return new VrekoWatcher(config);
 }
 
 // =============================================================================
@@ -402,7 +402,7 @@ export function createWatcher(config: WatcherConfig): SnapbackWatcher {
  * Get behavioral signals from a workspace
  */
 export async function getBehavioralSignals(workspaceRoot?: string): Promise<BehavioralSignal[]> {
-	return loadSnapbackJsonl<BehavioralSignal>("learnings/behavioral-signals.jsonl", workspaceRoot);
+	return loadVrekoJsonl<BehavioralSignal>("learnings/behavioral-signals.jsonl", workspaceRoot);
 }
 
 /**

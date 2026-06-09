@@ -18,9 +18,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
  * subcommands or the tests are updated to match the current CLI interface.
  *
  * TODO: Either refactor CLI to use subcommands or update tests to match
- * current CLI interface (e.g., `snapback snapshot -m "message"`)
+ * current CLI interface (e.g., `vreko snapshot -m "message"`)
  */
-describe.skip("CLI Snapshot Persistence Integration", () => {
+describe("@integration CLI Snapshot Persistence Integration", () => {
 	let testDir: string;
 	let cliPath: string;
 
@@ -52,7 +52,7 @@ describe.skip("CLI Snapshot Persistence Integration", () => {
 			expect(result).toMatch(/ID: [a-f0-9-]{36}/); // UUID format
 
 			// Verify SQLite database was created
-			const dbPath = join(testDir, ".snapback", "snapshots.db");
+			const dbPath = join(testDir, ".vreko", "snapshots.db");
 			expect(existsSync(dbPath)).toBe(true);
 		});
 
@@ -150,7 +150,7 @@ describe.skip("CLI Snapshot Persistence Integration", () => {
 			});
 
 			// Corrupt the database
-			const dbPath = join(testDir, ".snapback", "snapshots.db");
+			const dbPath = join(testDir, ".vreko", "snapshots.db");
 			writeFileSync(dbPath, "corrupted data");
 
 			try {

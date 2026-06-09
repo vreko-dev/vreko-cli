@@ -127,10 +127,10 @@ export function fileLink(filePath: string, line?: number): string {
 }
 
 /**
- * Create a SnapBack documentation link
+ * Create a Vreko documentation link
  */
 export function docsLink(path: string, text?: string): string {
-	const url = `https://docs.snapback.dev/${path}`;
+	const url = `https://docs.vreko.dev/${path}`;
 	return link(text || path, url);
 }
 
@@ -138,7 +138,7 @@ export function docsLink(path: string, text?: string): string {
  * Create a GitHub issue link
  */
 export function issueLink(issueNumber: number): string {
-	const url = `https://github.com/snapback-dev/snapback/issues/${issueNumber}`;
+	const url = `https://github.com/vreko-dev/vreko/issues/${issueNumber}`;
 	return link(`#${issueNumber}`, url);
 }
 
@@ -173,7 +173,7 @@ export function learnMore(url: string): string {
  * Create a "Report issue" link
  */
 export function reportIssue(): string {
-	const url = "https://github.com/snapback-dev/snapback/issues/new";
+	const url = "https://github.com/vreko-dev/vreko/issues/new";
 	return chalk.gray(`If this persists, ${link("report an issue", url)}`);
 }
 

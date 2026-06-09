@@ -95,7 +95,9 @@ describe("ProgressTracker", () => {
 
 	// Quiet mode (spec lines 403-412)
 	it("should suppress output in quiet mode", () => {
-		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {
+			/* intentionally empty */
+		});
 
 		const tracker = new ProgressTracker({ total: 5, quiet: true });
 		tracker.start();
@@ -113,7 +115,9 @@ describe("ProgressTracker", () => {
 			configurable: true,
 		});
 
-		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {
+			/* intentionally empty */
+		});
 
 		const tracker = new ProgressTracker({ total: 20, quiet: false });
 		tracker.start();
@@ -134,7 +138,9 @@ describe("ProgressTracker", () => {
 			configurable: true,
 		});
 
-		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {
+			/* intentionally empty */
+		});
 
 		const tracker = new ProgressTracker({ total: 5, quiet: false });
 		tracker.start();
@@ -173,7 +179,9 @@ describe("ProgressTracker", () => {
 			configurable: true,
 		});
 
-		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {
+			/* intentionally empty for test */
+		});
 
 		const tracker = new ProgressTracker({ total: 5, quiet: false });
 		tracker.fail("Error message");

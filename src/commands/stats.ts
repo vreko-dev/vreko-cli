@@ -1,7 +1,7 @@
 /**
  * Stats Command
  *
- * @fileoverview Implements `snap stats` - Show learning engine statistics.
+ * @fileoverview Implements `vr stats` - Show learning engine statistics.
  * This is the CLI equivalent of the MCP's `codebase.get_learning_stats()` tool.
  *
  * ## Purpose
@@ -38,10 +38,10 @@
  *
  * ```bash
  * # Show learning statistics
- * snap stats
+ * vr stats
  *
  * # Machine-readable output
- * snap stats --json
+ * vr stats --json
  * ```
  *
  * ## Output Format
@@ -78,17 +78,37 @@
  * @module commands/stats
  */
 
-import type { LearningStats, ViolationsSummary } from "@snapback/intelligence";
 import chalk from "chalk";
 import Table from "cli-table3";
 import { Command } from "commander";
 
 import { getIntelligence } from "../services/intelligence-service";
-import { displayBox } from "../utils/display";
 
 // =============================================================================
 // TYPES
 // =============================================================================
+
+/**
+ * Simple learning stats from service
+ *
+ * @internal
+ */
+interface SimpleLearningStats {
+	totalLearnings: number;
+	totalViolations: number;
+	byType: Record<string, number>;
+}
+
+/**
+ * Simple violations summary from service
+ *
+ * @internal
+ */
+interface SimpleViolationsSummary {
+	total: number;
+	byType: Record<string, number>;
+	byFile: Record<string, number>;
+}
 
 /**
  * Options parsed from command line
@@ -184,22 +204,13 @@ async function handleStatsCommand(options: StatsOptions): Promise<void> {
 		// STEP 1: Get Intelligence instance
 		const intelligence = await getIntelligence(cwd);
 
-		// STEP 2: Get stats (sync methods)
-		const learningStats = intelligence.getStats();
-		const violationsSummary = intelligence.getViolationsSummary();
+		// STEP 2: Get stats (async methods)
+		const learningStats = await intelligence.getStats();
+		const violationsSummary = await intelligence.getViolationsSummary();
 
 		// STEP 3: Handle JSON output
 		if (options.json) {
-			console.log(
-				JSON.stringify(
-					{
-						learning: learningStats,
-						violations: violationsSummary,
-					},
-					null,
-					2,
-				),
-			);
+			console.log(JSON.stringify({ learningStats, violationsSummary }, null, 2));
 			return;
 		}
 
@@ -209,11 +220,10 @@ async function handleStatsCommand(options: StatsOptions): Promise<void> {
 		const message = error instanceof Error ? error.message : String(error);
 
 		if (message.includes("not initialized")) {
-			console.log(chalk.yellow("SnapBack not initialized in this workspace"));
-			console.log(chalk.gray("Run: snap init"));
+			console.log(chalk.yellow("🦎 Vreko not initialized"));
+			console.log(chalk.gray("Run: vr init"));
 			process.exit(1);
 		}
-
 		console.error(chalk.red("Error:"), message);
 		process.exit(1);
 	}
@@ -247,49 +257,38 @@ async function handleStatsCommand(options: StatsOptions): Promise<void> {
  *
  * @internal
  */
-function displayStatsResults(learningStats: LearningStats, violationsSummary: ViolationsSummary): void {
-	// PART 1: Learning stats box
-	console.log(
-		displayBox({
-			title: "📊 Learning Statistics",
-			content: formatLearningStats(learningStats),
-			type: "info",
-		}),
-	);
+function displayStatsResults(learningStats: SimpleLearningStats, violationsSummary: SimpleViolationsSummary): void {
+	console.log(chalk.cyan.bold("Learning Statistics"));
+	console.log();
+	console.log(`  Total Learnings:  ${learningStats.totalLearnings}`);
+	console.log(`  Total Violations: ${learningStats.totalViolations}`);
+	console.log(`  Types:            ${Object.keys(learningStats.byType).length}`);
+	console.log();
 
 	// PART 2: Violations table (if any violations exist)
-	if (violationsSummary.byType.length > 0) {
-		console.log();
-		console.log(chalk.cyan("Violation Patterns:"));
-
+	const violationTypes = Object.entries(violationsSummary.byType);
+	if (violationTypes.length > 0) {
 		// Create table with cli-table3
 		const table = new Table({
-			head: [chalk.cyan("Type"), chalk.cyan("Count"), chalk.cyan("Status")],
+			head: [chalk.cyan("Type"), chalk.cyan("Count")],
 			style: { head: [], border: [] },
 		});
 
 		// Add rows (limit to top 10)
-		for (const v of violationsSummary.byType.slice(0, 10)) {
-			const displayStatus = formatViolationStatus(v.status);
-			table.push([v.type, String(v.count), displayStatus]);
+		for (const [type, count] of violationTypes.slice(0, 10)) {
+			table.push([type, String(count)]);
 		}
 
 		console.log(table.toString());
 
 		// Show if there are more
-		if (violationsSummary.byType.length > 10) {
-			console.log(chalk.gray(`  ... and ${violationsSummary.byType.length - 10} more types`));
+		if (violationTypes.length > 10) {
+			console.log(chalk.gray(`  ... and ${violationTypes.length - 10} more`));
 		}
 	} else {
-		// No violations - show helpful message
-		console.log();
-		console.log(chalk.gray("No violations recorded yet."));
-		console.log(chalk.gray('Record with: snap patterns report "type" "file" "message"'));
+		console.log(chalk.green("✓"), "No violations recorded");
+		console.log(chalk.gray('  Record with: vr learn "trigger" "action"'));
 	}
-
-	// PART 3: Legend
-	console.log();
-	console.log(chalk.gray("Violations at 3x → promoted | 5x → automated"));
 }
 
 /**
@@ -298,54 +297,18 @@ function displayStatsResults(learningStats: LearningStats, violationsSummary: Vi
  * @param stats - Learning statistics
  * @returns Formatted string for box content
  *
- * @remarks
- * Calculates percentages and formats with chalk styling.
- *
  * @internal
  */
-function formatLearningStats(stats: LearningStats): string {
-	// Calculate feedback rate
-	const feedbackRate =
-		stats.totalInteractions > 0 ? Math.round((stats.feedbackReceived / stats.totalInteractions) * 100) : 0;
-
-	// Accuracy rate is already 0-1, convert to percentage
-	const accuracyRate = Math.round(stats.correctRate * 100);
-
+function _formatLearningStats(stats: SimpleLearningStats): string {
 	return [
-		`${chalk.bold("Total Interactions:")} ${stats.totalInteractions}`,
-		`${chalk.bold("Feedback Rate:")} ${feedbackRate}%`,
-		`${chalk.bold("Accuracy Rate:")} ${accuracyRate}%`,
-		`${chalk.bold("Golden Examples:")} ${stats.goldenExamples}`,
+		`${chalk.bold("Total Learnings:")} ${stats.totalLearnings}`,
+		`${chalk.bold("Total Violations:")} ${stats.totalViolations}`,
+		`${chalk.bold("Types:")} ${Object.keys(stats.byType).length}`,
 	].join("\n");
 }
 
 // =============================================================================
 // EXPORTS
 // =============================================================================
-
-/**
- * Format violation status for display
- *
- * @param status - Status from ViolationsSummary
- * @returns Formatted string with emoji
- *
- * @internal
- */
-function formatViolationStatus(status: string): string {
-	switch (status) {
-		case "tracking":
-			return "📝 Tracking";
-		case "ready_for_promotion":
-			return "📈 Ready for promotion";
-		case "ready_for_automation":
-			return "🤖 Ready for automation";
-		case "promoted":
-			return "✅ Promoted";
-		case "automated":
-			return "🤖 Automated";
-		default:
-			return status;
-	}
-}
 
 export { handleStatsCommand };

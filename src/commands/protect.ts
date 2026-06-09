@@ -1,8 +1,8 @@
 /**
  * Protect Command
  *
- * Implements snap protect add/remove/list - Manage file protection.
- * Protected files are stored in .snapback/protected.json
+ * Implements vr protect add/remove/list - Manage file protection.
+ * Protected files are stored in .vreko/protected.json
  *
  * @see implementation_plan.md Section 1.2
  */
@@ -12,13 +12,7 @@ import { join } from "node:path";
 import chalk from "chalk";
 import { Command } from "commander";
 
-import {
-	getProtectedFiles,
-	isSnapbackInitialized,
-	type ProtectedFile,
-	saveProtectedFiles,
-} from "../services/snapback-dir";
-import { formatDate } from "../utils";
+import { getProtectedFiles, isVrekoInitialized, type ProtectedFile, saveProtectedFiles } from "../services/vreko-dir";
 
 // =============================================================================
 // COMMAND DEFINITION
@@ -40,9 +34,9 @@ export function createProtectCommand(): Command {
 
 			try {
 				// Check if initialized
-				if (!(await isSnapbackInitialized(cwd))) {
-					console.log(chalk.yellow("SnapBack not initialized in this workspace"));
-					console.log(chalk.gray("Run: snap init"));
+				if (!(await isVrekoInitialized(cwd))) {
+					console.log(chalk.yellow("Vreko not initialized in this workspace"));
+					console.log(chalk.gray("Run: vr init"));
 					process.exit(1);
 				}
 
@@ -75,14 +69,13 @@ export function createProtectCommand(): Command {
 
 				protectedFiles.push(newProtection);
 				await saveProtectedFiles(protectedFiles, cwd);
-
 				console.log(chalk.green("✓"), `Added protection: ${pattern}`);
 				if (options.reason) {
 					console.log(chalk.gray(`  Reason: ${options.reason}`));
 				}
 			} catch (error: unknown) {
 				const message = error instanceof Error ? error.message : String(error);
-				console.error(chalk.red("Error:"), message);
+				console.error(`✗ Error: ${message}`);
 				process.exit(1);
 			}
 		});
@@ -96,9 +89,9 @@ export function createProtectCommand(): Command {
 
 			try {
 				// Check if initialized
-				if (!(await isSnapbackInitialized(cwd))) {
-					console.log(chalk.yellow("SnapBack not initialized in this workspace"));
-					console.log(chalk.gray("Run: snap init"));
+				if (!(await isVrekoInitialized(cwd))) {
+					console.log(chalk.yellow("Vreko not initialized in this workspace"));
+					console.log(chalk.gray("Run: vr init"));
 					process.exit(1);
 				}
 
@@ -114,11 +107,10 @@ export function createProtectCommand(): Command {
 
 				protectedFiles.splice(index, 1);
 				await saveProtectedFiles(protectedFiles, cwd);
-
 				console.log(chalk.green("✓"), `Removed protection: ${pattern}`);
 			} catch (error: unknown) {
 				const message = error instanceof Error ? error.message : String(error);
-				console.error(chalk.red("Error:"), message);
+				console.error(`✗ Error: ${message}`);
 				process.exit(1);
 			}
 		});
@@ -132,9 +124,9 @@ export function createProtectCommand(): Command {
 
 			try {
 				// Check if initialized
-				if (!(await isSnapbackInitialized(cwd))) {
-					console.log(chalk.yellow("SnapBack not initialized in this workspace"));
-					console.log(chalk.gray("Run: snap init"));
+				if (!(await isVrekoInitialized(cwd))) {
+					console.log(chalk.yellow("Vreko not initialized in this workspace"));
+					console.log(chalk.gray("Run: vr init"));
 					process.exit(1);
 				}
 
@@ -147,26 +139,23 @@ export function createProtectCommand(): Command {
 
 				if (protectedFiles.length === 0) {
 					console.log(chalk.yellow("No files protected"));
-					console.log(chalk.gray("Run: snap protect add <pattern>"));
+					console.log(chalk.gray("Run: vr protect add <pattern>"));
 					return;
 				}
 
 				console.log(chalk.cyan("Protected files:"));
 				console.log();
-
 				for (const file of protectedFiles) {
 					console.log(chalk.green("•"), file.pattern);
 					if (file.reason) {
 						console.log(chalk.gray(`  Reason: ${file.reason}`));
 					}
-					console.log(chalk.gray(`  Added: ${formatDate(file.addedAt)}`));
 				}
-
 				console.log();
 				console.log(chalk.gray(`Total: ${protectedFiles.length} protected`));
 			} catch (error: unknown) {
 				const message = error instanceof Error ? error.message : String(error);
-				console.error(chalk.red("Error:"), message);
+				console.error(`✗ Error: ${message}`);
 				process.exit(1);
 			}
 		});
@@ -179,9 +168,9 @@ export function createProtectCommand(): Command {
 			const cwd = process.cwd();
 
 			try {
-				if (!(await isSnapbackInitialized(cwd))) {
-					console.log(chalk.yellow("SnapBack not initialized"));
-					console.log(chalk.gray("Run: snap init"));
+				if (!(await isVrekoInitialized(cwd))) {
+					console.log(chalk.yellow("Vreko not initialized in this workspace"));
+					console.log(chalk.gray("Run: vr init"));
 					process.exit(1);
 				}
 
@@ -208,7 +197,7 @@ export function createProtectCommand(): Command {
 				}
 			} catch (error: unknown) {
 				const message = error instanceof Error ? error.message : String(error);
-				console.error(chalk.red("Error:"), message);
+				console.error(`✗ Error: ${message}`);
 				process.exit(1);
 			}
 		});
@@ -220,9 +209,9 @@ export function createProtectCommand(): Command {
 			const cwd = process.cwd();
 
 			try {
-				if (!(await isSnapbackInitialized(cwd))) {
-					console.log(chalk.yellow("SnapBack not initialized"));
-					console.log(chalk.gray("Run: snap init"));
+				if (!(await isVrekoInitialized(cwd))) {
+					console.log(chalk.yellow("Vreko not initialized in this workspace"));
+					console.log(chalk.gray("Run: vr init"));
 					process.exit(1);
 				}
 
@@ -259,7 +248,7 @@ export function createProtectCommand(): Command {
 				}
 			} catch (error: unknown) {
 				const message = error instanceof Error ? error.message : String(error);
-				console.error(chalk.red("Error:"), message);
+				console.error(`✗ Error: ${message}`);
 				process.exit(1);
 			}
 		});

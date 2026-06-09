@@ -20,18 +20,14 @@
  * import { displayBox, displaySaveStory, displaySnapshotSuccess } from "../utils/display";
  *
  * // Simple box with content and options
- * console.log(displayBox("Hello World", { type: "success", title: "Welcome" }));
+ * print(...));
  *
  * // Object-style API (preferred for new code)
- * console.log(displayBox({
- *   title: "📊 Statistics",
- *   content: "Total: 42\nActive: 12",
- *   type: "info",
- * }));
+ * print(...));
  *
  * // Specialized functions
- * console.log(displaySaveStory(8.5, ["src/auth.ts"], "abc123"));
- * console.log(displaySnapshotSuccess("abc123", "Before refactor", 5));
+ * print(...));
+ * print(...));
  * ```
  *
  * @see {@link file://ai_dev_utils/resources/new_cli/01-boxen-integration.spec.md}
@@ -132,7 +128,7 @@ const BOX_STYLES: Record<BoxType, Partial<BoxenOptions>> = {
  *
  * @param contentOrOptions - Either string content or object with content and options
  * @param options - Options when using string content (ignored for object style)
- * @returns Formatted box string ready for console.log()
+ * @returns Formatted box string ready for process.stdout.write()
  *
  * @remarks
  * ## Two calling styles
@@ -161,18 +157,10 @@ const BOX_STYLES: Record<BoxType, Partial<BoxenOptions>> = {
  * @example
  * ```typescript
  * // Success box
- * console.log(displayBox({
- *   title: "✅ Done",
- *   content: "Operation completed successfully",
- *   type: "success",
- * }));
+ * print(...));
  *
  * // Error box
- * console.log(displayBox({
- *   title: "❌ Error",
- *   content: "Something went wrong",
- *   type: "error",
- * }));
+ * print(...));
  * ```
  */
 export function displayBox(
@@ -218,7 +206,7 @@ export function displayBox(
 // =============================================================================
 
 /**
- * Display a "save story" box when SnapBack prevents a disaster
+ * Display a "save story" box when Vreko prevents a disaster
  *
  * @param riskScore - The risk score that was detected (0-10)
  * @param affectedFiles - Array of file paths that were protected
@@ -232,16 +220,16 @@ export function displayBox(
  * @example
  * ```typescript
  * const story = displaySaveStory(8.5, ["src/auth.ts", "src/api.ts"], "abc123def");
- * console.log(story);
+ * print(...);
  * ```
  */
 export function displaySaveStory(riskScore: number, affectedFiles: string[], snapshotId: string): string {
 	return displayBox(
-		`${chalk.bold("🛡️ SnapBack just protected you!")}\n\n` +
+		`${chalk.bold("🦎 Vreko protected you.")}\n\n` +
 			`${chalk.cyan("Risk Score:")} ${chalk.red(`${riskScore.toFixed(1)}/10`)}\n` +
 			`${chalk.cyan("Files Protected:")} ${chalk.green(affectedFiles.length.toString())}\n` +
 			`${chalk.cyan("Snapshot:")} ${snapshotId.substring(0, 8)}\n\n` +
-			chalk.dim("Share your save story: snapback.dev/stories"),
+			chalk.dim("Share your save story: vreko.dev/stories"),
 		{
 			type: "save-story",
 		},
@@ -259,7 +247,7 @@ export function displaySaveStory(riskScore: number, affectedFiles: string[], sna
  * @example
  * ```typescript
  * const success = displaySnapshotSuccess("abc123", "Before major refactor", 12);
- * console.log(success);
+ * print(...);
  * ```
  */
 export function displaySnapshotSuccess(snapshotId: string, message: string | undefined, fileCount: number): string {
@@ -269,7 +257,7 @@ export function displaySnapshotSuccess(snapshotId: string, message: string | und
 			`${chalk.cyan("Message:")} ${message || "(none)"}\n` +
 			`${chalk.cyan("Files:")} ${fileCount} protected`,
 		{
-			title: "🛡️ SnapBack Protection Active",
+			title: "🦎 Vreko Protection Active",
 			type: "success",
 		},
 	);
@@ -285,7 +273,7 @@ export function displaySnapshotSuccess(snapshotId: string, message: string | und
  * @example
  * ```typescript
  * const warning = displayHighRiskWarning("src/critical.ts", 9.2);
- * console.log(warning);
+ * print(...);
  * ```
  */
 export function displayHighRiskWarning(file: string, riskScore: number): string {
@@ -316,7 +304,7 @@ export function displayHighRiskWarning(file: string, riskScore: number): string 
  *   "Could not locate src/missing.ts",
  *   "Check the file path and try again"
  * );
- * console.log(error);
+ * print(...);
  * ```
  */
 export function displayError(title: string, message: string, suggestion?: string): string {
@@ -341,7 +329,7 @@ export function displayError(title: string, message: string, suggestion?: string
  * @example
  * ```typescript
  * const info = displayInfo("📊 Summary", "Total files: 42\nModified: 12");
- * console.log(info);
+ * print(...);
  * ```
  */
 export function displayInfo(title: string, content: string): string {
@@ -362,7 +350,7 @@ export function displayInfo(title: string, content: string): string {
  * @returns Formatted info box string
  *
  * @remarks
- * Used by `snap context` command to display loaded context.
+ * Used by `vr context` command to display loaded context.
  *
  * @example
  * ```typescript
@@ -372,7 +360,7 @@ export function displayInfo(title: string, content: string): string {
  *   learnings: 3,
  *   violations: 2,
  * });
- * console.log(box);
+ * print(...);
  * ```
  */
 export function displayContextSummary(summary: {
@@ -429,7 +417,7 @@ export function displayContextSummary(summary: {
  * @returns Formatted error box string
  *
  * @remarks
- * Used by `snap validate` command when files fail validation.
+ * Used by `vr validate` command when files fail validation.
  *
  * @example
  * ```typescript
@@ -437,7 +425,7 @@ export function displayContextSummary(summary: {
  *   { file: "src/auth.ts", issues: 3 },
  *   { file: "src/api.ts", issues: 1 },
  * ]);
- * console.log(box);
+ * print(...);
  * ```
  */
 export function displayValidationFailure(failures: Array<{ file: string; issues: number }>): string {
@@ -461,7 +449,7 @@ export function displayValidationFailure(failures: Array<{ file: string; issues:
  * @example
  * ```typescript
  * const box = displayValidationSuccess(5);
- * console.log(box);
+ * print(...);
  * ```
  */
 export function displayValidationSuccess(fileCount: number): string {

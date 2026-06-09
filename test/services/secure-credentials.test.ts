@@ -8,7 +8,22 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SecureCredentialsManager } from "../../src/services/secure-credentials";
-import type { GlobalCredentials } from "../../src/services/snapback-dir";
+import type { GlobalCredentials } from "../../src/services/vreko-dir";
+
+// Force keytar to be "unavailable" so the encrypted-file fallback path is
+// exercised deterministically. keytar is now a declared optionalDependency
+// (AUTH-06) and may have a built native binary present, so we can no longer rely
+// on its absence; the isAvailable() probe (getPassword) throwing makes the
+// manager fall back, matching the no-keychain environment these tests target.
+vi.mock("keytar", () => ({
+	getPassword: vi.fn(async () => {
+		throw new Error("keychain unavailable in test");
+	}),
+	setPassword: vi.fn(async () => {
+		throw new Error("keychain unavailable in test");
+	}),
+	deletePassword: vi.fn(async () => false),
+}));
 
 // Mock fs/promises
 vi.mock("node:fs/promises", () => ({
@@ -17,6 +32,22 @@ vi.mock("node:fs/promises", () => ({
 	unlink: vi.fn(),
 	mkdir: vi.fn(),
 }));
+
+// Mock node:fs (sync) used by the AUTH-04 per-install secret  -  keep a stable
+// in-memory secret so key derivation is deterministic within a test run and the
+// real home dir is never touched.
+const STABLE_SECRET = Buffer.alloc(32, 7);
+vi.mock("node:fs", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:fs")>();
+	return {
+		...actual,
+		existsSync: vi.fn(() => true),
+		readFileSync: vi.fn(() => STABLE_SECRET),
+		writeFileSync: vi.fn(),
+		mkdirSync: vi.fn(),
+		chmodSync: vi.fn(),
+	};
+});
 
 // Mock os
 vi.mock("node:os", () => ({
@@ -253,5 +284,63 @@ describe("Secure Credentials Exports", () => {
 	it("should export getSecureCredentials singleton getter", async () => {
 		const mod = await import("../../src/services/secure-credentials");
 		expect(typeof mod.getSecureCredentials).toBe("function");
+	});
+});
+
+// ── AUTH-04: per-install entropy in key derivation ─────────────────────────────
+
+describe("AUTH-04: per-install secret entropy (R-4.1, R-4.2)", () => {
+	it("R-4.1: two installs (different per-install secrets) derive different keys", async () => {
+		const { randomBytes } = await import("node:crypto");
+		const { deriveKeyFromSecret } = await import("../../src/services/secure-credentials");
+
+		// Same machine, same salt (the salt lives in the credential file header)  -
+		// only the per-install secret differs, simulating a second install.
+		const salt = randomBytes(32);
+		const secretA = randomBytes(32);
+		const secretB = randomBytes(32);
+
+		const keyA = deriveKeyFromSecret(salt, secretA);
+		const keyB = deriveKeyFromSecret(salt, secretB);
+
+		expect(keyA.equals(keyB)).toBe(false);
+	});
+
+	it("R-4.1: identical secret + salt derive the same key (deterministic decrypt)", async () => {
+		const { randomBytes } = await import("node:crypto");
+		const { deriveKeyFromSecret } = await import("../../src/services/secure-credentials");
+
+		const salt = randomBytes(32);
+		const secret = randomBytes(32);
+
+		expect(deriveKeyFromSecret(salt, secret).equals(deriveKeyFromSecret(salt, secret))).toBe(true);
+	});
+
+	it("R-4.2: the key depends on the per-install secret, not just header-derivable data", async () => {
+		// Behavioral proof that the secret (not the in-file salt) is load-bearing:
+		// holding machine data + salt constant, changing only the per-install secret
+		// changes the derived key. An attacker who reads credentials.enc sees the
+		// salt but not the secret, so cannot recompute the key.
+		const { randomBytes } = await import("node:crypto");
+		const { deriveKeyFromSecret } = await import("../../src/services/secure-credentials");
+
+		const salt = randomBytes(32); // the value that DOES live in the file header
+		const keyWithSecret1 = deriveKeyFromSecret(salt, Buffer.alloc(32, 1));
+		const keyWithSecret2 = deriveKeyFromSecret(salt, Buffer.alloc(32, 2));
+
+		// Same salt, different secret => different key. The header salt alone is
+		// insufficient to derive the key.
+		expect(keyWithSecret1.equals(keyWithSecret2)).toBe(false);
+	});
+
+	it("R-4.2: source stores the per-install secret outside the credential file at 0o600", async () => {
+		// Static confirmation the secret lives in its own restricted-permission file.
+		const realFs = await vi.importActual<typeof import("node:fs")>("node:fs");
+		const { fileURLToPath } = await import("node:url");
+		const srcPath = fileURLToPath(new URL("../../src/services/secure-credentials.ts", import.meta.url));
+		const src = realFs.readFileSync(srcPath, "utf-8");
+		expect(src).toContain("getOrCreatePerInstallSecret");
+		expect(src).toContain("PER_INSTALL_SECRET_FILE");
+		expect(src).toMatch(/mode:\s*0o600/);
 	});
 });

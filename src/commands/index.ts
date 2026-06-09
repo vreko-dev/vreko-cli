@@ -11,7 +11,7 @@
  * - `createWhoamiCommand()` - Show current user
  *
  * ### Workspace Management
- * - `createInitCommand()` - Initialize .snapback/ directory
+ * - `createInitCommand()` - Initialize .vreko/ directory
  * - `createStatusCommand()` - Show workspace status
  * - `createFixCommand()` - Fix common issues
  *
@@ -55,14 +55,23 @@
 // AUTHENTICATION COMMANDS
 // =============================================================================
 
-export { createLoginCommand, createLogoutCommand, createWhoamiCommand } from "./auth";
+export {
+	createLoginCommand,
+	createLogoutCommand,
+	createSetKeyCommand,
+	createWhoamiCommand,
+	createWorkspacesCommand,
+} from "./auth";
 
 // =============================================================================
 // WORKSPACE MANAGEMENT COMMANDS
 // =============================================================================
 
+export { createAnalyzeCommand } from "./analyze";
+export { createClaudeSyncCommand } from "./claude-sync";
 export { createFixCommand } from "./fix";
 export { createInitCommand } from "./init";
+export { createOnboardCommand } from "./onboard";
 export { createStatusCommand } from "./status";
 
 // =============================================================================
@@ -74,9 +83,9 @@ export { createStatusCommand } from "./status";
  *
  * @example
  * ```bash
- * snap completion bash
- * snap completion zsh
- * snap completion fish
+ * vreko completion bash
+ * vreko completion zsh
+ * vreko completion fish
  * ```
  */
 export { createCompletionCommand } from "./completion";
@@ -84,7 +93,7 @@ export { createCompletionCommand } from "./completion";
 // =============================================================================
 // INTELLIGENCE COMMANDS (CLI-UX-005)
 // =============================================================================
-// These commands integrate @snapback/intelligence into the CLI.
+// These commands integrate @vreko/intelligence into the CLI.
 // They are the customer-facing equivalents of the internal MCP tools.
 //
 // @see ai_dev_utils/mcp/server.ts for internal MCP implementation
@@ -97,7 +106,7 @@ export { createCompletionCommand } from "./completion";
  *
  * @example
  * ```bash
- * snap context "add authentication" --keywords auth session
+ * vreko context "add authentication" --keywords auth session
  * ```
  */
 export { createContextCommand } from "./context";
@@ -108,8 +117,8 @@ export { createContextCommand } from "./context";
  *
  * @example
  * ```bash
- * snap stats
- * snap stats --json
+ * vreko stats
+ * vreko stats --json
  * ```
  */
 export { createStatsCommand } from "./stats";
@@ -120,18 +129,82 @@ export { createStatsCommand } from "./stats";
  *
  * @example
  * ```bash
- * snap validate src/auth.ts
- * snap validate --all  # All staged files
+ * vreko validate src/auth.ts
+ * vreko validate --all  # All staged files
  * ```
  */
 export { createValidateCommand } from "./validate";
 
 // =============================================================================
+// MOMENTUM SCORING COMMANDS
+// =============================================================================
+// These commands support the momentum scoring system for identifying critical files.
+//
+// @see docs/roadmap/onboard_momentum.md for specification
+// @see packages/intelligence/src/momentum/ for core algorithms
+
+/**
+ * Metrics command - Show momentum scores for files
+ *
+ * @example
+ * ```bash
+ * vreko metrics
+ * vreko metrics src/auth.ts
+ * vreko metrics --all
+ * ```
+ */
+export { createMetricsCommand } from "./metrics";
+/**
+ * Refresh command - Incrementally update momentum signals
+ *
+ * @example
+ * ```bash
+ * vreko refresh
+ * vreko refresh --since HEAD~5
+ * ```
+ */
+export { createRefreshCommand } from "./refresh";
+/**
+ * Sync command - Collect signals and fit momentum scoring normalizers
+ *
+ * @example
+ * ```bash
+ * vreko sync
+ * vreko sync --quick
+ * ```
+ */
+export { createSyncCommand } from "./sync";
+
+// =============================================================================
 // LEARNING SYSTEM COMMANDS
 // =============================================================================
 
+export { createConsolidateCommand } from "./consolidate";
 export { createLearnCommand } from "./learn";
 export { createPatternsCommand } from "./patterns";
+/**
+ * Pulse command - Mid-session intelligence snapshot (advisory, read-only)
+ *
+ * Used by the Claude Code PreToolUse hook (AMBIENT-06) to fetch fragile-file
+ * intelligence before an agent edit. Shares `composeHint` with the MCP
+ * `vreko_pulse` tool for consistent advisory text across surfaces.
+ *
+ * @example
+ * ```bash
+ * vreko pulse --format json --focus packages/auth/src/session.ts
+ * vreko pulse
+ * ```
+ */
+export { createPulseCommand } from "./pulse";
+export { createPurgeCommand } from "./purge";
+
+// =============================================================================
+// FILE ANALYSIS COMMANDS
+// =============================================================================
+
+export { createCheckCommand } from "./check";
+export { createInteractiveCommand } from "./interactive";
+export { createRiskAnalyzeCommand } from "./risk-analyze";
 
 // =============================================================================
 // PROTECTION COMMANDS
@@ -139,6 +212,7 @@ export { createPatternsCommand } from "./patterns";
 
 export { createProtectCommand } from "./protect";
 export { createSessionCommand } from "./session";
+export { createSnapshotCommand } from "./snapshot";
 export { createWatchCommand } from "./watch";
 
 // =============================================================================
@@ -149,32 +223,97 @@ export { mcpCommand } from "./mcp";
 export { createToolsCommand } from "./tools";
 
 // =============================================================================
+// HOOKS COMMANDS
+// =============================================================================
+
+/**
+ * Hooks command  -  install/uninstall/status for AI tool integration hooks.
+ *
+ * @example
+ * ```bash
+ * vreko hooks install --tool claude-code
+ * vreko hooks uninstall --tool claude-code
+ * vreko hooks status
+ * ```
+ */
+export { createHooksCommand, hookStatus, installHook, uninstallHook } from "./hooks";
+
+// =============================================================================
+// PROJECTIONS COMMANDS
+// =============================================================================
+
+/**
+ * Projections command  -  consent-gated pointer injection into AI tool config files.
+ *
+ * @example
+ * ```bash
+ * vreko projections docs preview
+ * vreko projections docs enable
+ * vreko projections docs disable
+ * vreko projections docs status
+ * ```
+ */
+export { createProjectionsCommand } from "./projections";
+
+// =============================================================================
 // ACP INTEGRATION COMMANDS
 // =============================================================================
 
 export { acpCommand, createAcpCommand } from "./acp";
 
 // =============================================================================
-// DAEMON COMMANDS
+// TOP-LEVEL LIFECYCLE COMMANDS
 // =============================================================================
-// These commands manage the SnapBack daemon lifecycle.
-// The daemon provides a long-running process for CLI/Extension communication.
+
+export { createVrStartCommand } from "./start.js";
+export { createVrStopCommand } from "./stop.js";
+
+// registerDaemonCommands (backward-compat alias stub) is imported directly
+// in src/index.ts  -  excluded from re-export here because the stub file
+// name contains a reserved brand term.
+
+// =============================================================================
+// BASELINE COMMANDS (Phase 5)
+// =============================================================================
+// These commands manage workspace baselines for intelligence context.
 //
-// @see apps/cli/daemon_implementation.md for architecture
+// @see docs/daemon_complete_implementation.md Phase 5 specification
 
 /**
- * Daemon command - Manage SnapBack daemon
+ * Baseline command - Manage workspace baselines
  *
  * @example
  * ```bash
- * snap daemon start --detach
- * snap daemon status
- * snap daemon stop
- * snap daemon restart
- * snap daemon ping
+ * vreko baseline scan --workspace .
+ * vreko baseline status
+ * vreko baseline show
+ * vreko baseline invalidate
  * ```
  */
-export { registerDaemonCommands } from "./daemon";
+export { registerBaselineCommands } from "./baseline";
+
+// =============================================================================
+// SERVICE COMMANDS
+// =============================================================================
+// These commands manage the Vreko local service lifecycle.
+// The service provides shared state for multi-client support (CLI, Extension, etc).
+//
+// @see docs/roadmap/cli/coordination_layer.md for architecture
+
+/**
+ * Service command - Manage Vreko local service
+ *
+ * @example
+ * ```bash
+ * vreko service start --service
+ * vreko service status
+ * vreko service stop
+ * vreko service logs --follow
+ * vreko service install
+ * vreko service uninstall
+ * ```
+ */
+export { registerServiceCommands } from "./service";
 
 // =============================================================================
 // POLISH COMMANDS (Phase 6)
@@ -188,9 +327,9 @@ export { registerDaemonCommands } from "./daemon";
  *
  * @example
  * ```bash
- * snap alias list
- * snap alias set st status
- * snap alias delete st
+ * vreko alias list
+ * vreko alias set st status
+ * vreko alias delete st
  * ```
  */
 export { createAliasCommand, expandAlias } from "./alias";
@@ -199,31 +338,42 @@ export { createAliasCommand, expandAlias } from "./alias";
  *
  * @example
  * ```bash
- * snap config list
- * snap config get apiUrl
- * snap config set apiUrl https://api.snapback.dev
- * snap config path
+ * vreko config list
+ * vreko config get apiUrl
+ * vreko config set apiUrl https://api.vreko.dev
+ * vreko config path
  * ```
  */
 export { createConfigCommand } from "./config";
+export { createDiagnosticsCommand } from "./diagnostics";
 /**
  * Doctor command - Comprehensive diagnostics
  *
  * @example
  * ```bash
- * snap doctor
- * snap doctor --fix
- * snap doctor --json
+ * vreko doctor
+ * vreko doctor --fix
+ * vreko doctor --json
  * ```
  */
 export { createDoctorCommand } from "./doctor";
+/**
+ * Intel command  -  expose IntelligenceSnapshot to CLI/agent harnesses.
+ *
+ * @example
+ * ```bash
+ * vr intel snapshot
+ * vr intel snapshot --json
+ * ```
+ */
+export { registerIntelCommand } from "./intel.js";
 /**
  * Undo command - Restore from last destructive operation
  *
  * @example
  * ```bash
- * snap undo
- * snap undo --list
+ * vreko undo
+ * vreko undo --list
  * ```
  */
 export { createUndoCommand } from "./undo";
@@ -232,19 +382,9 @@ export { createUndoCommand } from "./undo";
  *
  * @example
  * ```bash
- * snap upgrade
- * snap upgrade --check
- * snap upgrade --canary
+ * vreko upgrade
+ * vreko upgrade --check
+ * vreko upgrade --canary
  * ```
  */
 export { createUpgradeCommand } from "./upgrade";
-/**
- * Wizard command - Interactive first-run setup
- *
- * @example
- * ```bash
- * snap wizard
- * snap wizard --force
- * ```
- */
-export { createWizardCommand, runWizard } from "./wizard";

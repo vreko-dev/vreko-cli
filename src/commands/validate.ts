@@ -1,7 +1,7 @@
 /**
  * Validate Command
  *
- * @fileoverview Implements `snap validate` - Run 7-layer validation pipeline on code.
+ * @fileoverview Implements `vr validate` - Run 7-layer validation pipeline on code.
  * This is the CLI equivalent of the MCP's `codebase.validate_code()` tool.
  *
  * ## Purpose
@@ -13,7 +13,8 @@
  * - Has no security issues
  * - Meets performance standards
  *
- * This command runs the full ValidationPipeline from @snapback/intelligence.
+ * This command runs the full ValidationPipeline from @vreko/intelligence.
+ * ReviewRecommendation type sourced from @vreko/contracts (canonical).
  *
  * ## The 7 Validation Layers
  *
@@ -29,16 +30,16 @@
  *
  * ```bash
  * # Validate a single file
- * snap validate src/auth.ts
+ * vr validate src/auth.ts
  *
  * # Validate all staged files (pre-commit)
- * snap validate --all
+ * vr validate --all
  *
  * # Quiet mode - only output if issues found
- * snap validate --all --quiet
+ * vr validate --all --quiet
  *
  * # Machine-readable output
- * snap validate src/auth.ts --json
+ * vr validate src/auth.ts --json
  * ```
  *
  * ## Output Format
@@ -73,16 +74,13 @@
 
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import type { ReviewRecommendation } from "@snapback/intelligence";
+import type { ReviewRecommendation } from "@vreko/contracts";
 import chalk from "chalk";
 import { Command } from "commander";
-import { DaemonClient } from "../daemon/client";
-import { getPidPath, getSocketPath } from "../daemon/platform";
+import { connectServiceClient, createServiceClient } from "../service-adapter/local-service-adapter.js";
 import { GitClient, isCodeFile } from "../services/git-client";
 import { getIntelligence } from "../services/intelligence-service";
-import { displayBox } from "../utils/display";
 import { ProgressTracker } from "../utils/progress";
-import { createValidationTable } from "../utils/tables";
 
 // =============================================================================
 // TYPES
@@ -237,7 +235,7 @@ async function handleValidateCommand(file: string | undefined, options: Validate
 		if (filesToValidate.length === 0) {
 			if (!options.quiet) {
 				console.log(chalk.yellow("No files to validate"));
-				console.log(chalk.gray("Usage: snap validate <file> or snap validate --all"));
+				console.log(chalk.gray("Usage: vr validate <file> or vr validate --all"));
 			}
 			return;
 		}
@@ -259,37 +257,33 @@ async function handleValidateCommand(file: string | undefined, options: Validate
 		// STEP 4a: Evaluate learnings in warn mode (Phase 2)
 		// For high-value commands (verify), surface warn-type learnings
 		const warnings: Array<{ title: string; message: string; severity: string }> = [];
+		const serviceClient = createServiceClient();
 		try {
-			const daemonClient = new DaemonClient({
-				socketPath: getSocketPath(),
-				pidPath: getPidPath(),
-				autoStart: true, // Start daemon if not running
-			});
+			await connectServiceClient(serviceClient);
 
 			// Try to evaluate learnings (non-blocking)
-			await daemonClient.connect();
-			const learningResult = await daemonClient.evaluateLearnings(cwd, "validate", {
+			const learningResult = await serviceClient.learning.evaluate({
+				workspace: cwd,
+				commandName: "validate",
 				filesOrPaths: filesToValidate,
 				intent: "review",
 				mode: "warn",
 			});
-			await daemonClient.disconnect();
 
-			// Collect warn-type learnings
-			if (learningResult.selectedLearnings && learningResult.selectedLearnings.length > 0) {
-				for (const learning of learningResult.selectedLearnings) {
-					if (learning.action.type === "warn" && learning.action.payload) {
-						const payload = learning.action.payload as { message?: string; severity?: string };
-						warnings.push({
-							title: learning.title || "Warning",
-							message: payload.message || "Check code for potential issues",
-							severity: payload.severity || "warning",
-						});
-					}
+			// Collect warn-type learnings from applicable results
+			if (learningResult.applicable && learningResult.applicable.length > 0) {
+				for (const learning of learningResult.applicable) {
+					warnings.push({
+						title: learning.trigger || "Warning",
+						message: learning.action || "Check code for potential issues",
+						severity: "warning",
+					});
 				}
 			}
 		} catch {
 			// Daemon not available or learning evaluation failed - continue without warnings
+		} finally {
+			serviceClient.close();
 		}
 
 		try {
@@ -303,16 +297,21 @@ async function handleValidateCommand(file: string | undefined, options: Validate
 					// Run validation pipeline
 					const pipelineResult = await intelligence.validateCode(content, filePath);
 
+					// Map recommendation string to type-safe value
+					const recommendation: ReviewRecommendation | "error" = pipelineResult.passed
+						? "auto_merge"
+						: "full_review";
+
 					// Collect result
 					results.push({
 						file: filePath,
-						passed: pipelineResult.overall.passed,
-						confidence: pipelineResult.overall.confidence,
-						issues: pipelineResult.overall.totalIssues,
-						recommendation: pipelineResult.recommendation,
+						passed: pipelineResult.passed,
+						confidence: pipelineResult.confidence,
+						issues: pipelineResult.totalIssues,
+						recommendation,
 					});
 
-					if (!pipelineResult.overall.passed) {
+					if (!pipelineResult.passed) {
 						hasErrors = true;
 					}
 				} catch {
@@ -358,11 +357,10 @@ async function handleValidateCommand(file: string | undefined, options: Validate
 		const message = error instanceof Error ? error.message : String(error);
 
 		if (message.includes("not initialized")) {
-			console.log(chalk.yellow("SnapBack not initialized in this workspace"));
-			console.log(chalk.gray("Run: snap init"));
+			console.log(chalk.yellow("🦎 Vreko not initialized"));
+			console.log(chalk.gray("Run: vr init"));
 			process.exit(1);
 		}
-
 		console.error(chalk.red("Error:"), message);
 		process.exit(1);
 	}
@@ -409,14 +407,10 @@ async function getFilesToValidate(file: string | undefined, all: boolean | undef
 
 			// Check git is available and we're in a repo
 			if (!(await git.isGitInstalled())) {
-				console.log(chalk.yellow("Git is not installed. Cannot detect staged files."));
-				console.log(chalk.gray("Install git or specify a file: snap validate <file>"));
 				return [];
 			}
 
 			if (!(await git.isGitRepository())) {
-				console.log(chalk.yellow("Not a git repository. Cannot detect staged files."));
-				console.log(chalk.gray("Initialize git or specify a file: snap validate <file>"));
 				return [];
 			}
 
@@ -426,8 +420,6 @@ async function getFilesToValidate(file: string | undefined, all: boolean | undef
 			// Filter to code files, exclude deleted files
 			return stagedFiles.filter((f) => f.status !== "deleted" && isCodeFile(f.path)).map((f) => f.path);
 		} catch {
-			// Git error - fall back to empty list
-			console.log(chalk.yellow("Could not get staged files"));
 			return [];
 		}
 	}
@@ -474,38 +466,20 @@ function displayValidationResults(
 ): void {
 	// PART 0: Display learning warnings (Phase 2)
 	if (warnings.length > 0) {
-		console.log();
 		for (const warning of warnings) {
 			const warningType = warning.severity === "error" ? "error" : "warning";
-			console.log(
-				displayBox({
-					title: `⚠️  ${warning.title}`,
-					content: warning.message,
-					type: warningType,
-				}),
-			);
+			const icon = warningType === "error" ? chalk.red("✗") : chalk.yellow("⚠");
+			console.log(`${icon} ${warning.title}: ${warning.message}`);
 		}
 	}
-
-	// PART 1: Results table
-	console.log();
-	console.log(createValidationTable(results));
 
 	// PART 2: Summary box for failures
 	if (hasErrors) {
 		const failedFiles = results.filter((r) => !r.passed);
-
-		console.log();
-		console.log(
-			displayBox({
-				title: "❌ Validation Failed",
-				content: formatValidationSummary(failedFiles),
-				type: "error",
-			}),
-		);
-
-		// PART 3: Tip
-		console.log(chalk.gray("\nRun 'snap patterns report' to track recurring issues"));
+		console.log(chalk.red(`\n✗ ${failedFiles.length} file(s) failed validation:`));
+		for (const f of failedFiles) {
+			console.log(`  ${chalk.bold(f.file)}: ${f.issues} issue${f.issues !== 1 ? "s" : ""}`);
+		}
 	}
 }
 
@@ -517,7 +491,7 @@ function displayValidationResults(
  *
  * @internal
  */
-function formatValidationSummary(failures: FileValidationResult[]): string {
+function _formatValidationSummary(failures: FileValidationResult[]): string {
 	return failures.map((f) => `${chalk.bold(f.file)}: ${f.issues} issue${f.issues !== 1 ? "s" : ""}`).join("\n");
 }
 

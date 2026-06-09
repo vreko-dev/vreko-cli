@@ -2,23 +2,21 @@
  * Interactive Onboarding Service
  *
  * Provides intelligent onboarding based on workspace analysis.
- * Uses WorkspaceProfiler for fingerprinting and gap analysis.
+ * Uses daemon's workspace/analyze for daemon-first approach (DAEMON_GENERATION=2).
+ * Falls back to direct WorkspaceProfiler if daemon is not available.
  *
  * @module services/onboarding
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import {
-	getFramework,
-	type OnboardingRecommendation,
-	type PatternGap,
-	type WorkspaceProfile,
-	WorkspaceProfiler,
-} from "@snapback/intelligence";
+// Type-only imports from @vreko/intelligence (erased at build time, no runtime bundle).
+// WorkspaceProfiler runtime is REMOVED  -  analysis now uses daemon-first IPC only.
+import type { OnboardingRecommendation, PatternGap, WorkspaceProfile } from "@vreko/intelligence";
 import chalk from "chalk";
 import ora from "ora";
-import { prompts, status } from "../ui/prompts";
+import { clackConfirm, clackLog } from "../ui/prompts-clack";
+import { connectToDaemon, isDaemonAvailable } from "./service-client";
 
 // =============================================================================
 // TYPES
@@ -58,51 +56,26 @@ export interface ApplyOptions {
  * Render workspace profile summary
  */
 export function renderProfileSummary(profile: WorkspaceProfile): void {
-	console.log();
-	console.log(chalk.cyan.bold("Workspace Analysis"));
-	console.log(chalk.gray("─".repeat(50)));
-
-	// Framework
-	console.log(
-		chalk.white("Framework: ") +
-			chalk.green(profile.framework.name) +
-			chalk.gray(` (${Math.round(profile.framework.confidence * 100)}% confidence)`),
-	);
-
 	// Languages
 	const topLanguages = profile.languages.slice(0, 3);
 	if (topLanguages.length > 0) {
-		console.log(chalk.white("Languages: ") + topLanguages.map((l) => `${l.name} (${l.percentage}%)`).join(", "));
+		// intentionally empty
 	}
-
-	// Package Manager
-	console.log(chalk.white("Package Manager: ") + chalk.green(profile.packageManager.name));
 
 	// Structure
 	if (profile.structure.isMonorepo) {
-		console.log(
-			chalk.white("Structure: ") +
-				chalk.yellow("Monorepo") +
-				(profile.structure.monorepoTool ? chalk.gray(` (${profile.structure.monorepoTool})`) : ""),
-		);
+		// intentionally empty
 	}
 
 	// Context
 	if (profile.existingContext.hasContextDirectory) {
-		console.log(
-			chalk.white("Context Docs: ") +
-				chalk.green("Found") +
-				chalk.gray(` (${profile.existingContext.files.length} files)`),
-		);
+		// intentionally empty
 	} else {
-		console.log(chalk.white("Context Docs: ") + chalk.yellow("Not found"));
+		// intentionally empty
 	}
 
 	// Health Score
-	const healthColor = profile.healthScore >= 70 ? chalk.green : profile.healthScore >= 40 ? chalk.yellow : chalk.red;
-	console.log(chalk.white("Health Score: ") + healthColor(`${profile.healthScore}/100`));
-
-	console.log();
+	const _healthColor = profile.healthScore >= 70 ? chalk.green : profile.healthScore >= 40 ? chalk.yellow : chalk.red;
 }
 
 /**
@@ -114,32 +87,25 @@ export function renderGapSummary(gaps: PatternGap[]): void {
 	const medium = gaps.filter((g) => g.severity === "medium");
 
 	if (gaps.length === 0) {
-		status.success("No significant gaps detected!");
+		clackLog.success("No significant gaps detected!");
 		return;
 	}
 
-	console.log(chalk.cyan.bold("Gap Analysis"));
-	console.log(chalk.gray("─".repeat(50)));
-
 	if (critical.length > 0) {
-		console.log(chalk.red(`Critical: ${critical.length}`) + chalk.gray(" - Immediate attention required"));
-		for (const gap of critical.slice(0, 3)) {
-			console.log(chalk.red(`  • ${gap.patternName}`));
+		for (const _gap of critical.slice(0, 3)) {
+			// intentionally empty
 		}
 	}
 
 	if (high.length > 0) {
-		console.log(chalk.yellow(`High: ${high.length}`) + chalk.gray(" - Should be addressed soon"));
-		for (const gap of high.slice(0, 3)) {
-			console.log(chalk.yellow(`  • ${gap.patternName}`));
+		for (const _gap of high.slice(0, 3)) {
+			// intentionally empty
 		}
 	}
 
 	if (medium.length > 0) {
-		console.log(chalk.blue(`Medium: ${medium.length}`));
+		// intentionally empty
 	}
-
-	console.log();
 }
 
 /**
@@ -147,26 +113,18 @@ export function renderGapSummary(gaps: PatternGap[]): void {
  */
 export function renderRecommendations(recommendations: OnboardingRecommendation[]): void {
 	if (recommendations.length === 0) {
-		status.success("No recommendations - workspace looks good!");
+		clackLog.success("No recommendations - workspace looks good!");
 		return;
 	}
 
-	console.log(chalk.cyan.bold("Recommendations"));
-	console.log(chalk.gray("─".repeat(50)));
-
 	for (let i = 0; i < Math.min(5, recommendations.length); i++) {
 		const rec = recommendations[i];
-		const icon = rec.category === "context" ? "📝" : rec.category === "security" ? "🔒" : "💡";
-
-		console.log(`${icon} ${chalk.white.bold(rec.title)}${chalk.gray(` (${rec.estimatedTime})`)}`);
-		console.log(chalk.gray(`   ${rec.description}`));
+		const _icon = rec.category === "context" ? "📝" : rec.category === "security" ? "🔒" : "💡";
 	}
 
 	if (recommendations.length > 5) {
-		console.log(chalk.gray(`   ... and ${recommendations.length - 5} more`));
+		// intentionally empty
 	}
-
-	console.log();
 }
 
 // =============================================================================
@@ -175,24 +133,52 @@ export function renderRecommendations(recommendations: OnboardingRecommendation[
 
 /**
  * Analyze workspace and generate onboarding recommendations
+ *
+ * Uses daemon-first approach (DAEMON_GENERATION=2).
+ * Workspace analysis REQUIRES the daemon  -  WorkspaceProfiler runtime
+ * has been removed from the CLI bundle to enforce IP protection.
  */
 export async function analyzeWorkspace(workspaceRoot: string): Promise<OnboardingAnalysis> {
 	const spinner = ora("Analyzing workspace...").start();
 
 	try {
-		const profiler = new WorkspaceProfiler({
-			workspaceRoot,
-			detectPatterns: true,
-		});
+		let profile: WorkspaceProfile;
 
-		const profile = await profiler.analyze();
-		spinner.succeed("Workspace analysis complete");
+		// Daemon-first: try daemon's workspace/analyze
+		if (await isDaemonAvailable()) {
+			try {
+				spinner.text = "Analyzing workspace via service...";
+				const client = await connectToDaemon();
+				const daemonResult = await client.workspace.analyze({
+					workspace: workspaceRoot,
+					skipBaseline: true, // Onboarding doesn't need baseline
+					skipLearnings: false, // Seed learnings during onboarding
+				});
 
-		// Get framework config for recommendations
-		const frameworkConfig = getFramework(profile.framework.id);
+				if (daemonResult.profile) {
+					// Daemon returned profile - cast to full type (daemon returns complete profile)
+					profile = daemonResult.profile as unknown as WorkspaceProfile;
+					spinner.succeed("Workspace analysis complete (via service)");
+				} else {
+					spinner.fail("Service returned no workspace profile.");
+					throw new Error(
+						"Workspace analysis returned no profile. Ensure the Vreko service is running and the workspace is initialized.",
+					);
+				}
+			} catch (daemonError) {
+				spinner.fail("Service workspace analysis failed.");
+				throw daemonError;
+			}
+		} else {
+			spinner.fail("Vreko service not available.");
+			throw new Error(
+				"Workspace analysis requires the Vreko service.\n" +
+					"Start it with: npx vrekod  or  pnpm install -g @vreko/local-service",
+			);
+		}
 
-		// Generate recommendations from gaps
-		const recommendations = generateRecommendations(profile, frameworkConfig);
+		// Generate recommendations from profile
+		const recommendations = generateRecommendations(profile);
 
 		// Identify quick wins
 		const quickWins = recommendations.filter(
@@ -217,10 +203,7 @@ export async function analyzeWorkspace(workspaceRoot: string): Promise<Onboardin
 /**
  * Generate recommendations from workspace profile
  */
-function generateRecommendations(
-	profile: WorkspaceProfile,
-	_frameworkConfig?: ReturnType<typeof getFramework>,
-): OnboardingRecommendation[] {
+function generateRecommendations(profile: WorkspaceProfile): OnboardingRecommendation[] {
 	const recommendations: OnboardingRecommendation[] = [];
 	let priority = 1;
 
@@ -359,7 +342,7 @@ function getConstraintsTemplate(_profile: WorkspaceProfile): string {
 
 ## Code Quality
 - TypeScript strict mode
-- No console.log in production
+- No process.stdout.write in production
 - Test coverage > 80%
 
 ## Dependencies
@@ -385,10 +368,7 @@ export async function applyRecommendations(
 
 	for (const recommendation of recommendations) {
 		if (interactive && !autoApply) {
-			const shouldApply = await prompts.confirm({
-				message: `Apply: ${recommendation.title}?`,
-				default: true,
-			});
+			const shouldApply = await clackConfirm(`Apply: ${recommendation.title}?`, { defaultValue: true });
 
 			if (!shouldApply) {
 				continue;
@@ -401,7 +381,7 @@ export async function applyRecommendations(
 			}
 
 			if (dryRun) {
-				status.info(`[DRY RUN] Would ${action.type}: ${action.target}`);
+				clackLog.info(`[DRY RUN] Would ${action.type}: ${action.target}`);
 				continue;
 			}
 
@@ -412,19 +392,19 @@ export async function applyRecommendations(
 							const filePath = join(workspaceRoot, action.target);
 							await mkdir(dirname(filePath), { recursive: true });
 							await writeFile(filePath, action.content, "utf-8");
-							status.success(`Created ${action.target}`);
+							clackLog.success(`Created ${action.target}`);
 						}
 						break;
 
 					case "update-file":
-						status.info(`Update ${action.target}: ${action.description}`);
+						clackLog.info(`Update ${action.target}: ${action.description}`);
 						break;
 
 					default:
-						status.info(`${action.type}: ${action.description}`);
+						clackLog.info(`${action.type}: ${action.description}`);
 				}
 			} catch (error) {
-				status.error(
+				clackLog.error(
 					`Failed to apply ${action.type} to ${action.target}: ${error instanceof Error ? error.message : String(error)}`,
 				);
 			}

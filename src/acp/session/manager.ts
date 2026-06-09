@@ -3,10 +3,19 @@
  *
  * Manages session lifecycle for ACP connections.
  *
+ * Day 5: Routes session operations through daemon IPC.
+ *
  * @module acp/session/manager
  */
 
 import { randomUUID } from "node:crypto";
+import type { VrekoLocalClient } from "@vreko/local-service-client";
+import {
+	connectServiceClient,
+	createServiceClient,
+	createSessionViaDaemon,
+	endSessionViaDaemon,
+} from "../../service-adapter/local-service-adapter.js";
 
 // =============================================================================
 // TYPES
@@ -34,6 +43,7 @@ export interface CreateSessionParams {
 /**
  * SessionManager handles the lifecycle of ACP sessions.
  *
+ * Day 5: Routes session operations through daemon IPC.
  * Sessions are lightweight containers that hold context for a sequence
  * of tool calls. They can optionally override the workspace path and
  * carry metadata.
@@ -41,15 +51,52 @@ export interface CreateSessionParams {
 export class SessionManager {
 	private sessions = new Map<string, Session>();
 	private readonly logFn: (msg: string, data?: Record<string, unknown>) => void;
+	private client: VrekoLocalClient | null = null;
 
 	constructor(logFn?: (msg: string, data?: Record<string, unknown>) => void) {
-		this.logFn = logFn ?? (() => {});
+		this.logFn =
+			logFn ??
+			(() => {
+				/* intentionally empty */
+			});
+	}
+
+	/**
+	 * Initialize connection to daemon
+	 */
+	async initialize(): Promise<void> {
+		this.client = createServiceClient();
+		await connectServiceClient(this.client);
 	}
 
 	/**
 	 * Create a new session.
+	 * Day 5: Routes through daemon IPC.
 	 */
 	async create(params: CreateSessionParams): Promise<Session> {
+		// Try daemon IPC first
+		if (this.client) {
+			try {
+				const daemonResult = await createSessionViaDaemon(this.client, params);
+				if (daemonResult.success && daemonResult.result) {
+					const session: Session = {
+						id: daemonResult.result.id,
+						name: params.name,
+						workspacePath: daemonResult.result.workspacePath ?? params.workspacePath,
+						metadata: daemonResult.result.metadata,
+						createdAt: new Date(daemonResult.result.createdAt),
+						lastActivityAt: new Date(daemonResult.result.lastActivityAt),
+					};
+					this.sessions.set(session.id, session);
+					this.logFn("Session created via daemon", { sessionId: session.id, name: session.name });
+					return session;
+				}
+			} catch (error) {
+				this.logFn("Daemon session create failed, using local fallback", { error: String(error) });
+			}
+		}
+
+		// Fallback: local session creation
 		const session: Session = {
 			id: randomUUID(),
 			name: params.name,
@@ -60,7 +107,7 @@ export class SessionManager {
 		};
 
 		this.sessions.set(session.id, session);
-		this.logFn("Session created", { sessionId: session.id, name: session.name });
+		this.logFn("Session created locally", { sessionId: session.id, name: session.name });
 
 		return session;
 	}
@@ -86,9 +133,23 @@ export class SessionManager {
 
 	/**
 	 * Close a session by ID.
+	 * Day 5: Routes through daemon IPC.
 	 */
 	async close(id: string): Promise<boolean> {
 		const existed = this.sessions.has(id);
+
+		// Try daemon IPC
+		if (this.client && existed) {
+			try {
+				const workspacePath = this.sessions.get(id)?.workspacePath;
+				if (workspacePath) {
+					await endSessionViaDaemon(this.client, id, workspacePath);
+				}
+			} catch {
+				// Continue with local cleanup
+			}
+		}
+
 		this.sessions.delete(id);
 
 		if (existed) {
@@ -103,6 +164,21 @@ export class SessionManager {
 	 */
 	async closeAll(): Promise<void> {
 		const count = this.sessions.size;
+
+		// Close each session via daemon
+		if (this.client) {
+			const closePromises = Array.from(this.sessions.values()).map((session) => {
+				if (!session.workspacePath) {
+					return Promise.resolve();
+				}
+				// biome-ignore lint/style/noNonNullAssertion: this.client checked truthy by enclosing if
+				return endSessionViaDaemon(this.client!, session.id, session.workspacePath).catch(() => {
+					/* intentionally empty */
+				});
+			});
+			await Promise.all(closePromises);
+		}
+
 		this.sessions.clear();
 		this.logFn("All sessions closed", { count });
 	}

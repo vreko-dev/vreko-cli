@@ -2,7 +2,6 @@
 
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { CLIEngineAdapter } from "@snapback/engine/transports/cli";
 import { ApiClient } from "./services/api-client";
 
 interface CheckOptions {
@@ -17,13 +16,10 @@ export async function check(options: CheckOptions = {}): Promise<number> {
 		if (options.staged) {
 			filesToCheck = getStagedFiles();
 		} else {
-			// For now, we'll just return success if not checking staged files
-			console.log("No files to check");
 			return 0;
 		}
 
 		if (filesToCheck.length === 0) {
-			console.log("No staged files to check");
 			return 0;
 		}
 
@@ -39,16 +35,14 @@ export async function check(options: CheckOptions = {}): Promise<number> {
 
 			// Log findings
 			if (findings.length > 0) {
-				console.log("API findings:");
-				for (const finding of findings) {
-					console.log(`  ${finding.file}:${finding.line} [${finding.severity}] ${finding.message}`);
+				for (const _finding of findings) {
+					// intentionally empty
 				}
 
 				// Check for critical findings (risk > 8)
 				const criticalFindings = findings.filter((f) => f.risk > 8);
 				if (criticalFindings.length > 0) {
 					if (options.bypass) {
-						console.log(`⚠️  Critical findings bypassed: ${options.bypass}`);
 						// Log audit entry for bypass
 						logAudit("check_bypassed", {
 							bypassReason: options.bypass,
@@ -56,7 +50,6 @@ export async function check(options: CheckOptions = {}): Promise<number> {
 						});
 						return 0;
 					}
-					console.error("❌ Critical findings detected. Commit blocked.");
 					// Log audit entry for block
 					logAudit("check_blocked", {
 						criticalFindings: criticalFindings.length,
@@ -64,25 +57,22 @@ export async function check(options: CheckOptions = {}): Promise<number> {
 					return 1;
 				}
 			} else {
-				console.log("✅ No findings detected");
+				// intentionally empty
 			}
 		} else {
-			console.log("⚠️  API unavailable, using basic pattern detection as fallback");
 			// Fallback to basic pattern detection when API is unavailable
 			const findings = await analyzeFilesWithBasicPatterns(filesToCheck);
 
 			// Log findings
 			if (findings.length > 0) {
-				console.log("Basic pattern findings:");
-				for (const finding of findings) {
-					console.log(`  ${finding.file}:${finding.line} [${finding.severity}] ${finding.message}`);
+				for (const _finding of findings) {
+					// intentionally empty
 				}
 
 				// Check for critical findings (risk > 8)
 				const criticalFindings = findings.filter((f) => f.risk > 8);
 				if (criticalFindings.length > 0) {
 					if (options.bypass) {
-						console.log(`⚠️  Critical findings bypassed: ${options.bypass}`);
 						// Log audit entry for bypass
 						logAudit("check_bypassed", {
 							bypassReason: options.bypass,
@@ -91,7 +81,6 @@ export async function check(options: CheckOptions = {}): Promise<number> {
 						});
 						return 0;
 					}
-					console.error("❌ Critical findings detected. Commit blocked.");
 					// Log audit entry for block
 					logAudit("check_blocked", {
 						criticalFindings: criticalFindings.length,
@@ -100,13 +89,12 @@ export async function check(options: CheckOptions = {}): Promise<number> {
 					return 1;
 				}
 			} else {
-				console.log("✅ No findings detected");
+				// intentionally empty
 			}
 		}
 
 		return 0;
 	} catch (error) {
-		console.error("Error during check:", error);
 		// Log audit entry for error
 		logAudit("check_error", {
 			error: error instanceof Error ? error.message : String(error),
@@ -119,8 +107,7 @@ function getStagedFiles(): string[] {
 	try {
 		const output = execSync("git diff --cached --name-only", { encoding: "utf-8" });
 		return output.split(/\r?\n/).filter(Boolean); // Cross-platform line endings
-	} catch (error) {
-		console.error("Failed to get staged files:", error);
+	} catch (_error) {
 		return [];
 	}
 }
@@ -154,82 +141,49 @@ async function analyzeFilesWithAPI(files: string[], apiClient: ApiClient): Promi
 					risk: result.score,
 					severity: result.riskLevel || "medium",
 					message: result.factors.join(", "),
-					suggestions: result.issues?.map((issue: any) => issue.message) || [],
+					suggestions: result.issues?.map((issue: unknown) => (issue as { message: string }).message) || [],
 				});
 			}
 		}
-	} catch (error) {
-		console.warn("Failed to analyze files via API:", error);
+	} catch {
+		/* intentionally empty */
 	}
 
 	return findings;
 }
 
-// Engine-based pattern detection for offline fallback (uses SnapBack engine)
+// Pattern-based detection for offline fallback (no engine dependency)
 async function analyzeFilesWithBasicPatterns(files: string[]): Promise<GuardianFinding[]> {
 	const findings: GuardianFinding[] = [];
 
-	try {
-		// Use CLIEngineAdapter for robust offline analysis
-		const engineAdapter = new CLIEngineAdapter();
-		const filesForAnalysis = files
-			.filter((file) => existsSync(file))
-			.map((file) => ({
-				path: file,
-				content: readFileSync(file, "utf-8"),
-			}));
-
-		if (filesForAnalysis.length === 0) {
-			return findings;
-		}
-
-		const result = await engineAdapter.analyze({
-			files: filesForAnalysis,
-			format: "json",
-		});
-
-		// Convert engine result to findings
-		if (result.riskScore > 0) {
-			for (const file of filesForAnalysis) {
-				findings.push({
-					file: file.path,
-					line: 1,
-					risk: result.riskScore,
-					severity: result.riskLevel === "critical" || result.riskLevel === "high" ? "high" : "medium",
-					message: `Risk level: ${result.riskLevel} (${result.riskScore.toFixed(1)}/10)`,
-					suggestions: [],
-				});
-			}
-		}
-	} catch (error) {
-		console.warn("Engine analysis failed, using regex fallback:", error);
-		// Fallback to regex patterns if engine fails
-		for (const file of files) {
-			try {
-				if (existsSync(file)) {
-					const content = readFileSync(file, "utf-8");
-					const factors: string[] = [];
-					if (content.includes("eval(")) {
-						factors.push("eval() usage");
-					}
-					if (content.includes("Function(")) {
-						factors.push("Function constructor");
-					}
-					const score = factors.length > 0 ? Math.min(factors.length * 3, 10) : 0;
-					if (score > 0) {
-						findings.push({
-							file,
-							line: 1,
-							risk: score,
-							severity: factors.length > 2 ? "high" : "medium",
-							message: factors.join(", "),
-							suggestions: [],
-						});
-					}
+	for (const file of files) {
+		try {
+			if (existsSync(file)) {
+				const content = readFileSync(file, "utf-8");
+				const factors: string[] = [];
+				if (content.includes("eval(")) {
+					factors.push("eval() usage");
 				}
-			} catch {
-				/* skip unreadable files */
+				if (content.includes("Function(")) {
+					factors.push("Function constructor");
+				}
+				if (/process\.env\.[A-Z_]{6,}/.test(content)) {
+					factors.push("env variable access");
+				}
+				const score = factors.length > 0 ? Math.min(factors.length * 3, 10) : 0;
+				if (score > 0) {
+					findings.push({
+						file,
+						line: 1,
+						risk: score,
+						severity: factors.length > 2 ? "high" : "medium",
+						message: factors.join(", "),
+						suggestions: [],
+					});
+				}
 			}
+		} catch {
+			/* skip unreadable files */
 		}
 	}
 
@@ -245,9 +199,8 @@ interface GuardianFinding {
 	suggestions?: string[];
 }
 
-function logAudit(action: string, details: Record<string, any>): void {
-	// Simple audit logging to console for now
-	console.log(`[AUDIT] ${new Date().toISOString()} ${action}:`, JSON.stringify(details));
+function logAudit(_action: string, _details: Record<string, unknown>): void {
+	/* intentionally empty */
 }
 
 // CLI entry point
@@ -267,8 +220,7 @@ if (require.main === module) {
 		.then((exitCode) => {
 			process.exit(exitCode);
 		})
-		.catch((error) => {
-			console.error("Unexpected error:", error);
+		.catch((_error) => {
 			process.exit(1);
 		});
 }

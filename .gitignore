@@ -1,29 +1,9 @@
-
-# === Prevent internal file leaks to public repos ===
-# Internal documentation
-CLAUDE.md
-claudedocs/
-dashboard_*.md
-oauth-flow.md
-*-flow.md
-
-# Debug artifacts
-test.txt
-validation-*.txt
-untitled:*
-mock-*.csv
-*.backup
-*.bak
-*.orig
-
-# Test workspaces
-test-workspace/
-spike/
-
-# Build artifacts
-package.json.lint-scripts
-
-# Internal docs
-docs/internal/
-docs/development/bug-fixes-history.md
-docs/documentation-update-summary.md
+node_modules/
+dist-types/
+*.log
+.DS_Store
+.env
+.env.local
+*.tsbuildinfo
+coverage/
+.turbo/

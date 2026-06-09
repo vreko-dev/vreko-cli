@@ -1,11 +1,11 @@
 /**
  * Fix Command
  *
- * Implements snap fix <issue> - Auto-fix detected issues.
- * Issues are detected by snap status and can be resolved with this command.
+ * Implements vr fix <issue> - Auto-fix detected issues.
+ * Issues are detected by vr status and can be resolved with this command.
  *
  * Available fixes:
- * - missing-gitignore: Add .snapback to .gitignore
+ * - missing-gitignore: Add .vreko to .gitignore
  * - no-protection: Auto-detect and protect critical files
  * - stale-session: End stale session
  * - high-violations: Show violation patterns for learning
@@ -25,11 +25,10 @@ import {
 	getProtectedFiles,
 	getViolations,
 	getWorkspaceVitals,
-	isSnapbackInitialized,
+	isVrekoInitialized,
 	type ProtectedFile,
 	saveProtectedFiles,
-} from "../services/snapback-dir";
-import { displayBox } from "../utils/display";
+} from "../services/vreko-dir";
 
 // =============================================================================
 // TYPES
@@ -49,7 +48,7 @@ type FixFunction = (workspaceRoot: string, dryRun: boolean) => Promise<FixResult
 
 const FIXES: Record<string, { description: string; fix: FixFunction }> = {
 	"missing-gitignore": {
-		description: "Add .snapback to .gitignore",
+		description: "Add .vreko to .gitignore",
 		fix: fixMissingGitignore,
 	},
 	"no-protection": {
@@ -65,7 +64,7 @@ const FIXES: Record<string, { description: string; fix: FixFunction }> = {
 		fix: fixHighViolations,
 	},
 	"not-logged-in": {
-		description: "Login to SnapBack for full features",
+		description: "Login to Vreko for full features",
 		fix: fixNotLoggedIn,
 	},
 };
@@ -80,10 +79,12 @@ const FIXES: Record<string, { description: string; fix: FixFunction }> = {
 export function createFixCommand(): Command {
 	const fix = new Command("fix")
 		.description("Auto-fix detected issues")
-		.argument("[issue]", "Issue ID to fix (from snap status)")
+		.argument("[issue]", "Issue ID to fix (from vr status)")
 		.option("--dry-run", "Show what would be fixed without making changes")
 		.option("--all", "Fix all detected issues")
 		.option("--list", "List all available fixes")
+		.option("--json", "Output result as JSON for LLM consumption")
+		.option("-q, --quiet", "Suppress non-essential output")
 		.action(async (issue: string | undefined, options) => {
 			const cwd = process.cwd();
 
@@ -95,9 +96,9 @@ export function createFixCommand(): Command {
 				}
 
 				// Check if initialized
-				if (!(await isSnapbackInitialized(cwd))) {
-					console.log(chalk.yellow("SnapBack not initialized in this workspace"));
-					console.log(chalk.gray("Run: snap init"));
+				if (!(await isVrekoInitialized(cwd))) {
+					console.log(chalk.yellow("Vreko not initialized in this workspace"));
+					console.log(chalk.gray("Run: vr init"));
 					process.exit(1);
 				}
 
@@ -112,11 +113,11 @@ export function createFixCommand(): Command {
 					console.log(chalk.yellow("No issue specified"));
 					console.log();
 					console.log("Usage:");
-					console.log(chalk.gray("  snap fix <issue-id>    Fix a specific issue"));
-					console.log(chalk.gray("  snap fix --all         Fix all detected issues"));
-					console.log(chalk.gray("  snap fix --list        List all available fixes"));
+					console.log(chalk.gray("  vr fix <issue-id>    Fix a specific issue"));
+					console.log(chalk.gray("  vr fix --all         Fix all detected issues"));
+					console.log(chalk.gray("  vr fix --list        List all available fixes"));
 					console.log();
-					console.log("Run", chalk.cyan("snap status"), "to see detected issues.");
+					console.log("Run", chalk.cyan("vr status"), "to see detected issues.");
 					return;
 				}
 
@@ -154,7 +155,7 @@ export function createFixCommand(): Command {
 				}
 			} catch (error: unknown) {
 				const message = error instanceof Error ? error.message : String(error);
-				console.error(chalk.red("Error:"), message);
+				console.error(`✗ Error: ${message}`);
 				process.exit(1);
 			}
 		});
@@ -167,7 +168,7 @@ export function createFixCommand(): Command {
 // =============================================================================
 
 /**
- * Fix missing .gitignore entry for .snapback
+ * Fix missing .gitignore entry for .vreko
  */
 async function fixMissingGitignore(workspaceRoot: string, dryRun: boolean): Promise<FixResult> {
 	const gitignorePath = join(workspaceRoot, ".gitignore");
@@ -179,22 +180,22 @@ async function fixMissingGitignore(workspaceRoot: string, dryRun: boolean): Prom
 		// Read current content
 		const content = await readFile(gitignorePath, "utf-8");
 
-		// Check if already has .snapback
-		if (content.includes(".snapback")) {
+		// Check if already has .vreko
+		if (content.includes(".vreko")) {
 			return {
 				success: false,
-				message: ".snapback already in .gitignore",
+				message: ".vreko already in .gitignore",
 			};
 		}
 
 		// Prepare addition
-		const addition = "\n# SnapBack snapshots (large binary data)\n.snapback/snapshots/\n.snapback/embeddings.db\n";
+		const addition = "\n# Vreko snapshots (large binary data)\n.vreko/snapshots/\n.vreko/embeddings.db\n";
 
 		if (dryRun) {
 			return {
 				success: true,
-				message: "Would add .snapback entries to .gitignore",
-				details: [".snapback/snapshots/", ".snapback/embeddings.db"],
+				message: "Would add .vreko entries to .gitignore",
+				details: [".vreko/snapshots/", ".vreko/embeddings.db"],
 			};
 		}
 
@@ -203,25 +204,25 @@ async function fixMissingGitignore(workspaceRoot: string, dryRun: boolean): Prom
 
 		return {
 			success: true,
-			message: "Added .snapback entries to .gitignore",
-			details: [".snapback/snapshots/", ".snapback/embeddings.db"],
+			message: "Added .vreko entries to .gitignore",
+			details: [".vreko/snapshots/", ".vreko/embeddings.db"],
 		};
 	} catch {
 		// No .gitignore exists, create one
 		if (dryRun) {
 			return {
 				success: true,
-				message: "Would create .gitignore with .snapback entries",
+				message: "Would create .gitignore with .vreko entries",
 			};
 		}
 
-		const content = "# SnapBack snapshots (large binary data)\n.snapback/snapshots/\n.snapback/embeddings.db\n";
+		const content = "# Vreko snapshots (large binary data)\n.vreko/snapshots/\n.vreko/embeddings.db\n";
 		const { writeFile } = await import("node:fs/promises");
 		await writeFile(gitignorePath, content);
 
 		return {
 			success: true,
-			message: "Created .gitignore with .snapback entries",
+			message: "Created .gitignore with .vreko entries",
 		};
 	}
 }
@@ -306,13 +307,13 @@ async function fixStaleSession(workspaceRoot: string, dryRun: boolean): Promise<
 	}
 
 	// Archive and end session
-	const { appendSnapbackJsonl } = await import("../services/snapback-dir");
-	await appendSnapbackJsonl(
+	const { appendVrekoJsonl } = await import("../services/vreko-dir");
+	await appendVrekoJsonl(
 		"session/history.jsonl",
 		{
 			...session,
 			endedAt: new Date().toISOString(),
-			endMessage: "Auto-ended by snap fix (stale session)",
+			endMessage: "Auto-ended by vr fix (stale session)",
 		},
 		workspaceRoot,
 	);
@@ -354,26 +355,17 @@ async function fixHighViolations(workspaceRoot: string, _dryRun: boolean): Promi
 		const promoted = count >= 3 ? " (pattern candidate)" : "";
 		return `${emoji} ${type}: ${count} occurrences${promoted}`;
 	});
-
-	// Show the violations summary
-	console.log();
-	console.log(
-		displayBox(
-			`${chalk.yellow("High Violation Count")}\n\n` +
-				`${recentViolations.length} violations in the last week.\n` +
-				"Review these patterns to prevent future issues.\n\n" +
-				details.join("\n"),
-			{ type: "warning" },
-		),
-	);
+	for (const line of details) {
+		console.log(`  ${line}`);
+	}
 
 	return {
 		success: true,
 		message: "Violation patterns analyzed",
 		details: [
 			"Patterns with 3+ occurrences are candidates for automation.",
-			"Run: snap patterns list  to see promoted patterns",
-			'Run: snap learn "<trigger>" "<action>"  to record learnings',
+			"Run: vr patterns list  to see promoted patterns",
+			'Run: vr learn "<trigger>" "<action>"  to record learnings',
 		],
 	};
 }
@@ -382,22 +374,10 @@ async function fixHighViolations(workspaceRoot: string, _dryRun: boolean): Promi
  * Fix not logged in by prompting to login
  */
 async function fixNotLoggedIn(_workspaceRoot: string, _dryRun: boolean): Promise<FixResult> {
-	console.log();
-	console.log(
-		displayBox(
-			`${chalk.cyan("Login for Full Features")}\n\n` +
-				"Some features require a SnapBack account:\n" +
-				"• Pro tier: Snapshots, recovery, advanced protection\n" +
-				"• Free tier: Risk analysis, pattern tracking\n\n" +
-				`${chalk.bold("Run:")} snap login`,
-			{ type: "info" },
-		),
-	);
-
 	return {
 		success: true,
 		message: "Login instructions displayed",
-		details: ["Run: snap login"],
+		details: ["Run: vr login"],
 	};
 }
 
@@ -411,47 +391,48 @@ async function fixNotLoggedIn(_workspaceRoot: string, _dryRun: boolean): Promise
 function displayAvailableFixes(): void {
 	console.log(chalk.cyan("Available Fixes:"));
 	console.log();
-
 	for (const [id, { description }] of Object.entries(FIXES)) {
 		console.log(`  ${chalk.bold(id)}`);
 		console.log(chalk.gray(`    ${description}`));
 	}
-
 	console.log();
-	console.log(chalk.gray("Usage: snap fix <issue-id>"));
-	console.log(chalk.gray("       snap fix --all"));
+	console.log(chalk.gray("Usage: vr fix <issue-id>"));
+	console.log(chalk.gray("       vr fix --all"));
 }
 
 /**
  * Fix all detected issues
  */
 async function fixAll(workspaceRoot: string, dryRun: boolean): Promise<void> {
-	console.log(chalk.cyan(dryRun ? "Dry run: Would fix all issues" : "Fixing all detected issues..."));
-	console.log();
-
 	let fixedCount = 0;
 	let skippedCount = 0;
 
-	for (const [id, { description, fix }] of Object.entries(FIXES)) {
-		process.stdout.write(`  ${id}... `);
+	console.log(chalk.cyan(dryRun ? "Dry run: Would fix all issues" : "Fixing all detected issues..."));
 
+	for (const [id, { fix }] of Object.entries(FIXES)) {
 		try {
 			const result = await fix(workspaceRoot, dryRun);
 
 			if (result.success) {
-				console.log(chalk.green("✓"), chalk.gray(result.message));
 				fixedCount++;
+				if (dryRun) {
+					console.log(chalk.cyan("✓"), `${id}: ${result.message}`);
+				} else {
+					console.log(chalk.green("✓"), `${id}: ${result.message}`);
+				}
 			} else {
-				console.log(chalk.gray("○"), chalk.gray(result.message));
 				skippedCount++;
+				console.log(chalk.yellow("○"), `${id}: ${result.message}`);
 			}
 		} catch (error) {
-			console.log(chalk.red("✗"), chalk.gray(error instanceof Error ? error.message : "Unknown error"));
+			skippedCount++;
+			const message = error instanceof Error ? error.message : String(error);
+			console.log(chalk.red("✗"), `${id}: ${message}`);
 		}
 	}
 
 	console.log();
-	console.log(chalk.gray(`Fixed: ${fixedCount}, Skipped: ${skippedCount}`));
+	console.log(`Fixed: ${fixedCount}, Skipped: ${skippedCount}`);
 }
 
 /**

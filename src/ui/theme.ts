@@ -9,8 +9,8 @@
  * - Green Dark: #22C55E - Hover states
  * - Green Light: #6EE7A7 - Highlights
  *
- * IMPORTANT: Blue/cyan are NOT SnapBack brand colors.
- * The 🧢 emoji is blue due to Unicode limitations, not brand choice.
+ * IMPORTANT: Blue/cyan are NOT Vreko brand colors.
+ * The 🦎 emoji is blue due to Unicode limitations, not brand choice.
  *
  * @module ui/theme
  */
@@ -52,10 +52,10 @@ export const BRAND_COLORS = {
  *
  * @example
  * // ❌ WRONG - off-brand
- * console.log(chalk.cyan("Welcome to SnapBack!"));
+ * print(...));
  *
  * // ✅ CORRECT - brand-consistent
- * console.log(theme.brand("Welcome to SnapBack!"));
+ * print(...));
  */
 export const theme = {
 	/** Primary brand color - use for headers, highlights, commands */
@@ -93,7 +93,7 @@ export const theme = {
 
 /**
  * Format a command for display
- * @example formatCommand("snap init") // "$ snap init" in brand green
+ * @example formatCommand("vr init") // "$ vr init" in brand green
  */
 export function formatCommand(command: string): string {
 	return theme.brand(`$ ${command}`);

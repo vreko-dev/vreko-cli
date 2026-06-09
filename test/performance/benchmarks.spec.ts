@@ -21,7 +21,7 @@ describe("CLI Performance Benchmarks", () => {
 
 	beforeEach(async () => {
 		// Create temporary directory for tests
-		testDir = await mkdtemp(join(tmpdir(), "snapback-cli-bench-"));
+		testDir = await mkdtemp(join(tmpdir(), "vreko-cli-bench-"));
 	});
 
 	afterEach(async () => {
@@ -51,8 +51,6 @@ describe("CLI Performance Benchmarks", () => {
 
 			expect(result.stdout).toBeDefined();
 			expect(duration).toBeLessThan(200);
-
-			console.log(`✓ CLI analyze (quick): ${duration.toFixed(2)}ms`);
 		});
 
 		it("bench-cli-002: should analyze file in <500ms (AST mode)", async () => {
@@ -84,8 +82,6 @@ describe("CLI Performance Benchmarks", () => {
 
 			expect(result.stdout).toBeDefined();
 			expect(duration).toBeLessThan(500); // AST analysis has higher budget
-
-			console.log(`✓ CLI analyze (AST): ${duration.toFixed(2)}ms`);
 		});
 
 		it("bench-cli-003: should detect risks in <200ms", async () => {
@@ -107,8 +103,6 @@ describe("CLI Performance Benchmarks", () => {
 
 			expect(result.stdout).toContain("Risk");
 			expect(duration).toBeLessThan(200);
-
-			console.log(`✓ CLI risk detection: ${duration.toFixed(2)}ms`);
 		});
 	});
 
@@ -125,8 +119,6 @@ describe("CLI Performance Benchmarks", () => {
 			const duration = performance.now() - start;
 
 			expect(duration).toBeLessThan(200);
-
-			console.log(`✓ CLI snapshot creation: ${duration.toFixed(2)}ms`);
 		});
 
 		it("bench-cli-005: should create multi-file snapshot in <300ms", async () => {
@@ -145,8 +137,6 @@ describe("CLI Performance Benchmarks", () => {
 			const duration = performance.now() - start;
 
 			expect(duration).toBeLessThan(300);
-
-			console.log(`✓ CLI multi-file snapshot: ${duration.toFixed(2)}ms`);
 		});
 	});
 
@@ -160,8 +150,6 @@ describe("CLI Performance Benchmarks", () => {
 
 			expect(result.stdout).toBeDefined();
 			expect(duration).toBeLessThan(100);
-
-			console.log(`✓ CLI list snapshots: ${duration.toFixed(2)}ms`);
 		});
 	});
 
@@ -172,7 +160,7 @@ describe("CLI Performance Benchmarks", () => {
 			await writeFile(testFile, "console.log('commit');");
 
 			// Mock git diff output
-			process.env.SNAPBACK_TEST_MODE = "true";
+			process.env.VREKO_TEST_MODE = "true";
 
 			const start = performance.now();
 			const result = await execAsync(`node dist/index.js check ${testFile}`, {
@@ -183,9 +171,7 @@ describe("CLI Performance Benchmarks", () => {
 			expect(result.stdout).toBeDefined();
 			expect(duration).toBeLessThan(300);
 
-			console.log(`✓ CLI pre-commit check: ${duration.toFixed(2)}ms`);
-
-			delete process.env.SNAPBACK_TEST_MODE;
+			delete process.env.VREKO_TEST_MODE;
 		});
 	});
 
@@ -208,8 +194,6 @@ describe("CLI Performance Benchmarks", () => {
 			const duration = performance.now() - start;
 
 			expect(duration).toBeLessThan(1000);
-
-			console.log(`✓ CLI full workflow: ${duration.toFixed(2)}ms`);
 		});
 	});
 });

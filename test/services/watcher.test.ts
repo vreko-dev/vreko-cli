@@ -9,12 +9,12 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { appendSnapbackJsonl, createSnapbackDirectory, writeSnapbackJson } from "../../src/services/snapback-dir";
+import { appendVrekoJsonl, createVrekoDirectory, writeVrekoJson } from "../../src/services/vreko-dir";
 import {
 	analyzeBehavioralSignals,
 	createWatcher,
 	getBehavioralSignals,
-	SnapbackWatcher,
+	VrekoWatcher,
 } from "../../src/services/watcher";
 
 // =============================================================================
@@ -26,7 +26,7 @@ import {
  * Replaces hardcoded setTimeout delays with event-based waiting
  */
 function waitForEvent(
-	watcher: SnapbackWatcher,
+	watcher: VrekoWatcher,
 	event: "ready" | "change" | "add" | "unlink",
 	timeoutMs = 5000,
 ): Promise<string | undefined> {
@@ -46,7 +46,7 @@ function waitForEvent(
  * Helper to wait for watcher to be ready and stable
  * Note: chokidar with ignoreInitial:true won't count pre-existing files
  */
-async function waitForWatcherReady(watcher: SnapbackWatcher): Promise<void> {
+async function waitForWatcherReady(watcher: VrekoWatcher): Promise<void> {
 	await waitForEvent(watcher, "ready");
 	// Give chokidar time to complete initial directory scan
 	await new Promise((resolve) => setTimeout(resolve, 200));
@@ -61,11 +61,11 @@ describe("Watcher Service", () => {
 
 	beforeEach(async () => {
 		// Create temp directory for each test
-		testDir = join(tmpdir(), `snapback-watcher-test-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`);
+		testDir = join(tmpdir(), `vreko-watcher-test-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`);
 		await mkdir(testDir, { recursive: true });
-		await createSnapbackDirectory(testDir);
-		// Initialize with config.json (required for isSnapbackInitialized)
-		await writeSnapbackJson(
+		await createVrekoDirectory(testDir);
+		// Initialize with config.json (required for isVrekoInitialized)
+		await writeVrekoJson(
 			"config.json",
 			{ createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
 			testDir,
@@ -86,11 +86,11 @@ describe("Watcher Service", () => {
 	// =========================================================================
 
 	describe("createWatcher", () => {
-		it("should create a SnapbackWatcher instance", () => {
+		it("should create a VrekoWatcher instance", () => {
 			// Happy path: factory creates watcher
 			const watcher = createWatcher({ workspaceRoot: testDir });
 
-			expect(watcher).toBeInstanceOf(SnapbackWatcher);
+			expect(watcher).toBeInstanceOf(VrekoWatcher);
 			expect(watcher.isRunning()).toBe(false);
 		});
 
@@ -103,15 +103,15 @@ describe("Watcher Service", () => {
 				verbose: true,
 			});
 
-			expect(watcher).toBeInstanceOf(SnapbackWatcher);
+			expect(watcher).toBeInstanceOf(VrekoWatcher);
 		});
 	});
 
 	// =========================================================================
-	// SnapbackWatcher - Start/Stop
+	// VrekoWatcher - Start/Stop
 	// =========================================================================
 
-	describe("SnapbackWatcher.start", () => {
+	describe("VrekoWatcher.start", () => {
 		it("should start watching and emit ready event", async () => {
 			// Happy path: watcher starts
 			const watcher = createWatcher({ workspaceRoot: testDir });
@@ -138,20 +138,20 @@ describe("Watcher Service", () => {
 			await watcher.stop();
 		});
 
-		it("should throw if snapback not initialized", async () => {
+		it("should throw if vreko not initialized", async () => {
 			// Sad path: not initialized
 			const uninitDir = join(tmpdir(), `uninitialized-${Date.now()}`);
 			await mkdir(uninitDir, { recursive: true });
 
 			const watcher = createWatcher({ workspaceRoot: uninitDir });
 
-			await expect(watcher.start()).rejects.toThrow("SnapBack not initialized");
+			await expect(watcher.start()).rejects.toThrow("Vreko not initialized");
 
 			await rm(uninitDir, { recursive: true, force: true });
 		});
 	});
 
-	describe("SnapbackWatcher.stop", () => {
+	describe("VrekoWatcher.stop", () => {
 		it("should stop watching and clean up", async () => {
 			// Happy path: watcher stops
 			const watcher = createWatcher({ workspaceRoot: testDir });
@@ -172,10 +172,10 @@ describe("Watcher Service", () => {
 	});
 
 	// =========================================================================
-	// SnapbackWatcher - Stats
+	// VrekoWatcher - Stats
 	// =========================================================================
 
-	describe("SnapbackWatcher.getStats", () => {
+	describe("VrekoWatcher.getStats", () => {
 		it("should return initial stats before start", () => {
 			// Happy path: stats available
 			const watcher = createWatcher({ workspaceRoot: testDir });
@@ -231,7 +231,7 @@ describe("Watcher Service", () => {
 				timestamp: new Date().toISOString(),
 			};
 
-			await appendSnapbackJsonl("learnings/behavioral-signals.jsonl", signal, testDir);
+			await appendVrekoJsonl("learnings/behavioral-signals.jsonl", signal, testDir);
 
 			const signals = await getBehavioralSignals(testDir);
 
@@ -257,7 +257,7 @@ describe("Watcher Service", () => {
 		it("should return empty when signals below threshold", async () => {
 			// Edge path: not enough signals
 			for (let i = 0; i < 5; i++) {
-				await appendSnapbackJsonl(
+				await appendVrekoJsonl(
 					"learnings/behavioral-signals.jsonl",
 					{
 						type: "file_change",
@@ -275,7 +275,7 @@ describe("Watcher Service", () => {
 		it("should detect frequently changed files at 10+ changes", async () => {
 			// Happy path: pattern detected
 			for (let i = 0; i < 12; i++) {
-				await appendSnapbackJsonl(
+				await appendVrekoJsonl(
 					"learnings/behavioral-signals.jsonl",
 					{
 						type: "file_change",
@@ -300,7 +300,7 @@ describe("Watcher Service", () => {
 
 			for (const file of files) {
 				for (let i = 0; i < 10; i++) {
-					await appendSnapbackJsonl(
+					await appendVrekoJsonl(
 						"learnings/behavioral-signals.jsonl",
 						{
 							type: "file_change",
@@ -323,6 +323,7 @@ describe("Watcher Service", () => {
 	// =========================================================================
 
 	describe("Event Emission", () => {
+		// Note: Uses real FS events via chokidar; generous timeouts for stability
 		it("should emit change events for file modifications", async () => {
 			// Happy path: change event
 			const watcher = createWatcher({ workspaceRoot: testDir });
@@ -340,7 +341,8 @@ describe("Watcher Service", () => {
 			await writeFile(testFile, "const x = 1;");
 
 			// Wait for add event with longer timeout
-			await vi.waitFor(() => addEvents.length > 0, { timeout: 5000 });
+			// vi.waitFor in Vitest 3 only retries when the callback throws  -  use expect() to signal "not ready"
+			await vi.waitFor(() => expect(addEvents.length).toBeGreaterThan(0), { timeout: 5000 });
 
 			// Small delay for write to stabilize (awaitWriteFinish)
 			await new Promise((resolve) => setTimeout(resolve, 200));
@@ -349,7 +351,7 @@ describe("Watcher Service", () => {
 			await writeFile(testFile, "const x = 2;");
 
 			// Wait for change event
-			await vi.waitFor(() => changeEvents.length > 0, { timeout: 5000 });
+			await vi.waitFor(() => expect(changeEvents.length).toBeGreaterThan(0), { timeout: 5000 });
 
 			// Check that change event was emitted
 			expect(changeEvents.length).toBeGreaterThan(0);
@@ -357,9 +359,8 @@ describe("Watcher Service", () => {
 			await watcher.stop();
 		});
 
-		// Note: This test is flaky in CI due to chokidar's awaitWriteFinish behavior
-		// The watcher works in production but timing issues make it unreliable in tests
-		it.skip("should emit add events for new files", async () => {
+		// Note: Uses real FS events via chokidar; generous timeouts for stability
+		it("should emit add events for new files", async () => {
 			// Happy path: add event
 			const watcher = createWatcher({ workspaceRoot: testDir });
 			let addEventReceived = false;
@@ -377,9 +378,8 @@ describe("Watcher Service", () => {
 
 			// Wait for add event with generous timeout
 			// Note: awaitWriteFinish + stabilityThreshold may cause delay
-			await vi.waitFor(() => addEventReceived, { timeout: 8000 });
-
-			expect(addEventReceived).toBe(true);
+			// vi.waitFor in Vitest 3 only retries when the callback throws  -  use expect() to signal "not ready"
+			await vi.waitFor(() => expect(addEventReceived).toBe(true), { timeout: 8000 });
 
 			await watcher.stop();
 		});

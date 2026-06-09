@@ -1,7 +1,7 @@
 /**
  * CLI Branding & Logo
  *
- * ASCII art logo and branding utilities for the SnapBack CLI.
+ * ASCII art logo and branding utilities for the Vreko CLI.
  * Used for first-time experience and welcome screens.
  *
  * @see cli_ui_imp.md for design spec
@@ -15,34 +15,29 @@ import chalk from "chalk";
 // =============================================================================
 
 /**
- * SnapBack ASCII art logo (large)
+ * Vreko ASCII art logo (large)
  * Note: No leading newline - prevents terminal scroll issues
  */
-export const LOGO_LARGE = `███████╗███╗   ██╗ █████╗ ██████╗ ██████╗  █████╗  ██████╗██╗  ██╗
-██╔════╝████╗  ██║██╔══██╗██╔══██╗██╔══██╗██╔══██╗██╔════╝██║ ██╔╝
-███████╗██╔██╗ ██║███████║██████╔╝██████╔╝███████║██║     █████╔╝
-╚════██║██║╚██╗██║██╔══██║██╔═══╝ ██╔══██╗██╔══██║██║     ██╔═██╗
-███████║██║ ╚████║██║  ██║██║     ██████╔╝██║  ██║╚██████╗██║  ██╗
-╚══════╝╚═╝  ╚═══╝╚═╝  ╚═╝╚═╝     ╚═════╝ ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝`;
+export const LOGO_LARGE = `██╗   ██╗██████╗ ███████╗██╗  ██╗ ██████╗
+██║   ██║██╔══██╗██╔════╝██║ ██╔╝██╔═══██╗
+██║   ██║██████╔╝█████╗  █████╔╝ ██║   ██║
+╚██╗ ██╔╝██╔══██╗██╔══╝  ██╔═██╗ ██║   ██║
+ ╚████╔╝ ██║  ██║███████╗██║  ██╗╚██████╔╝
+  ╚═══╝  ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝ ╚═════╝`;
 
 /**
- * SnapBack ASCII art logo (compact)
+ * Vreko ASCII art logo (compact)
  * Note: No leading newline - prevents terminal scroll issues
  */
-export const LOGO_COMPACT = ` ____                   ____             _
-/ ___| _ __   __ _ _ __|  _ \\ __ _  ___| | __
-\\___ \\| '_ \\ / _\` | '_ \\ |_) / _\` |/ __| |/ /
- ___) | | | | (_| | |_) |  _ < (_| | (__|   <
-|____/|_| |_|\\__,_| .__/|_| \\_\\__,_|\\___|_|\\_\\
-                  |_|`;
+export const LOGO_COMPACT = `╦  ╦ ╦═╗ ╔═╗ ╦╔═ ╔═╗
+╦  ╦ ╠╦╝ ║╣  ╠╩╗ ║ ║
+╚══╝ ╩╚═ ╚═╝ ╩ ╩ ╚═╝`;
 
 /**
  * Minimal logo for narrow terminals
  * Note: No leading newline - prevents terminal scroll issues
  */
-export const LOGO_MINIMAL = `╔═╗┌┐┌┌─┐┌─┐╔╗ ┌─┐┌─┐┬┌─
-╚═╗│││├─┤├─┘╠╩╗├─┤│  ├┴┐
-╚═╝┘└┘┴ ┴┴  ╚═╝┴ ┴└─┘┴ ┴`;
+export const LOGO_MINIMAL = `▸ vreko`;
 
 // =============================================================================
 // BRANDING FUNCTIONS
@@ -72,7 +67,7 @@ export function displayBrandedHeader(
 	const { version, showTagline = true, color = true } = options;
 
 	const logo = getLogo();
-	const coloredLogo = color ? chalk.cyan(logo) : logo;
+	const coloredLogo = color ? chalk.hex("#4ADE80")(logo) : logo;
 
 	const lines: string[] = [coloredLogo];
 
@@ -80,8 +75,8 @@ export function displayBrandedHeader(
 		lines.push("");
 		lines.push(
 			color
-				? `    ${chalk.blue("🧢")}  ${chalk.bold("Code Protection for AI-Native Development")}`
-				: "    🧢  Code Protection for AI-Native Development",
+				? `    ${chalk.hex("#4ADE80")("▰●▸")}  ${chalk.bold("developer intelligence")}`
+				: "    ▰●▸  developer intelligence",
 		);
 	}
 
@@ -101,17 +96,17 @@ export function displayWelcomeMessage(): string {
 	const message = `
 ${logo}
 
-${chalk.bold("Welcome to SnapBack!")}
+${chalk.bold("Welcome to Vreko")}
 
-SnapBack protects your code from AI coding assistant mistakes.
-When things go wrong, restore in seconds.
+Vreko makes your codebase smarter with every AI session.
+Learn patterns, prevent problems, restore in seconds.
 
-${chalk.cyan("Quick Start:")}
-  ${chalk.gray("1.")} ${chalk.cyan("snap login")}      ${chalk.gray("Connect your account")}
-  ${chalk.gray("2.")} ${chalk.cyan("snap init")}       ${chalk.gray("Initialize workspace")}
-  ${chalk.gray("3.")} ${chalk.cyan("snap tools configure")} ${chalk.gray("Set up AI tools")}
+${chalk.hex("#4ADE80")("Quick Start:")}
+  ${chalk.gray("1.")} ${chalk.hex("#4ADE80")("vr login")}      ${chalk.gray("Connect your account")}
+  ${chalk.gray("2.")} ${chalk.hex("#4ADE80")("vr init")}       ${chalk.gray("Initialize workspace")}
+  ${chalk.gray("3.")} ${chalk.hex("#4ADE80")("vr tools configure")} ${chalk.gray("Set up AI tools")}
 
-${chalk.dim("Learn more: https://docs.snapback.dev")}
+${chalk.dim("Learn more: https://docs.vreko.dev")}
 `;
 
 	return message;
@@ -158,7 +153,7 @@ export function displayDivider(width?: number, char = "─"): string {
  * Display a section header
  */
 export function displaySectionHeader(title: string): string {
-	return `\n${chalk.cyan.bold(title)}\n${displayDivider(title.length + 4)}`;
+	return `\n${chalk.hex("#4ADE80").bold(title)}\n${displayDivider(title.length + 4)}`;
 }
 
 // =============================================================================

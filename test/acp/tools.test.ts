@@ -10,16 +10,16 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock problematic infrastructure imports that fail in test environment
-vi.mock("@snapback/infrastructure/files", () => ({
+vi.mock("@vreko/infrastructure/files", () => ({
 	makeWatcher: vi.fn(),
 }));
 
-vi.mock("@snapback/infrastructure/cache", () => ({
+vi.mock("@vreko/infrastructure/cache", () => ({
 	createCacheKey: vi.fn(),
 	memoryCache: { get: vi.fn(), set: vi.fn() },
 }));
 
-vi.mock("@snapback/infrastructure/resiliency", () => ({
+vi.mock("@vreko/infrastructure/resiliency", () => ({
 	withBreaker: vi.fn((fn: () => unknown) => fn),
 	withRetry: vi.fn((fn: () => unknown) => fn),
 	getCircuitBreakerState: vi.fn(() => "closed"),
@@ -267,8 +267,8 @@ describe("Status Tool Handlers", () => {
 		});
 
 		it("returns initialized after creating snapshots", async () => {
-			// Initialize .snapback directory
-			mkdirSync(join(testDir, ".snapback", "snapshots"), { recursive: true });
+			// Initialize .vreko directory
+			mkdirSync(join(testDir, ".vreko", "snapshots"), { recursive: true });
 
 			const result = await statusHandlers.protection({}, context);
 

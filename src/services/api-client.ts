@@ -39,7 +39,30 @@ export interface SecretDetectionResponse {
 export interface PolicyEvaluationResponse {
 	action: "apply" | "review" | "block";
 	reason: string;
-	details: any;
+	details: Record<string, unknown>;
+}
+
+/**
+ * SARIF (Static Analysis Results Interchange Format) log structure
+ * @see https://sarifweb.azurewebsites.net/
+ */
+export interface SarifLog {
+	$schema?: string;
+	version: string;
+	runs: Array<{
+		tool: { driver: { name: string; version?: string } };
+		results?: Array<{
+			ruleId?: string;
+			level?: string;
+			message?: { text?: string };
+			locations?: Array<{
+				physicalLocation?: {
+					artifactLocation?: { uri?: string };
+					region?: { startLine?: number; startColumn?: number };
+				};
+			}>;
+		}>;
+	}>;
 }
 
 export class ApiClient {
@@ -48,8 +71,8 @@ export class ApiClient {
 
 	constructor() {
 		// Try to get API configuration from environment variables first
-		this.baseUrl = process.env.SNAPBACK_API_URL || "https://api.snapback.dev";
-		this.apiKey = process.env.SNAPBACK_API_KEY;
+		this.baseUrl = process.env.VREKO_API_URL || "https://api.vreko.dev";
+		this.apiKey = process.env.VREKO_API_KEY;
 
 		// If not found in environment, try to read from config file
 		if (!this.apiKey) {
@@ -59,8 +82,8 @@ export class ApiClient {
 
 	private readApiKeyFromConfig(): string | undefined {
 		try {
-			// Try to read from ~/.snapback/config.json
-			const configPath = join(homedir(), ".snapback", "config.json");
+			// Try to read from ~/.vreko/config.json
+			const configPath = join(homedir(), ".vreko", "config.json");
 			const configContent = readFileSync(configPath, "utf-8");
 			const config = JSON.parse(configContent);
 			return config.apiKey;
@@ -76,7 +99,7 @@ export class ApiClient {
 		const headers = {
 			"Content-Type": "application/json",
 			...(this.apiKey && {
-				Authorization: `Bearer ${this.apiKey}`,
+				"X-API-Key": this.apiKey,
 			}),
 			...options.headers,
 		};
@@ -102,56 +125,41 @@ export class ApiClient {
 			commitMessage?: string;
 			branchName?: string;
 		},
-	): Promise<any> {
-		try {
-			const response = await this.fetchAPI<AnalysisResponse>("/api/analyze/fast", {
-				method: "POST",
-				body: JSON.stringify({
-					files,
-					...options,
-				}),
-			});
+	): Promise<AnalysisResponse> {
+		const response = await this.fetchAPI<AnalysisResponse>("/api/analyze/fast", {
+			method: "POST",
+			body: JSON.stringify({
+				files,
+				...options,
+			}),
+		});
 
-			return response;
-		} catch (error) {
-			console.error("Failed to analyze files via API:", error);
-			throw error;
-		}
+		return response;
 	}
 
 	// Detect secrets using the backend API
 	public async detectSecrets(content: string, filePath: string): Promise<SecretDetectionResponse> {
-		try {
-			const response = await this.fetchAPI<SecretDetectionResponse>("/api/detect-secrets", {
-				method: "POST",
-				body: JSON.stringify({
-					content,
-					filePath,
-				}),
-			});
+		const response = await this.fetchAPI<SecretDetectionResponse>("/api/detect-secrets", {
+			method: "POST",
+			body: JSON.stringify({
+				content,
+				filePath,
+			}),
+		});
 
-			return response;
-		} catch (error) {
-			console.error("Failed to detect secrets via API:", error);
-			throw error;
-		}
+		return response;
 	}
 
 	// Evaluate policy using the backend API
-	public async evaluatePolicy(sarifLog: any): Promise<PolicyEvaluationResponse> {
-		try {
-			const response = await this.fetchAPI<PolicyEvaluationResponse>("/api/policy/evaluate", {
-				method: "POST",
-				body: JSON.stringify({
-					sarif: sarifLog,
-				}),
-			});
+	public async evaluatePolicy(sarifLog: SarifLog): Promise<PolicyEvaluationResponse> {
+		const response = await this.fetchAPI<PolicyEvaluationResponse>("/api/policy/evaluate", {
+			method: "POST",
+			body: JSON.stringify({
+				sarif: sarifLog,
+			}),
+		});
 
-			return response;
-		} catch (error) {
-			console.error("Failed to evaluate policy via API:", error);
-			throw error;
-		}
+		return response;
 	}
 
 	// Health check to verify API connectivity
@@ -161,8 +169,7 @@ export class ApiClient {
 				method: "GET",
 			});
 			return true;
-		} catch (error) {
-			console.error("API health check failed:", error);
+		} catch (_error) {
 			return false;
 		}
 	}

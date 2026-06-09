@@ -17,14 +17,14 @@ describe("ApiClient", () => {
 
 	it("should use environment variables for configuration", () => {
 		// Set environment variables
-		process.env.SNAPBACK_API_URL = "https://test-api.snapback.dev";
-		process.env.SNAPBACK_API_KEY = "test-key";
+		process.env.VREKO_API_URL = "https://test-api.vreko.dev";
+		process.env.VREKO_API_KEY = "test-key";
 
 		const client = new ApiClient();
 
 		// Clean up environment variables
-		delete process.env.SNAPBACK_API_URL;
-		delete process.env.SNAPBACK_API_KEY;
+		delete process.env.VREKO_API_URL;
+		delete process.env.VREKO_API_KEY;
 
 		expect(client).toBeDefined();
 	});
@@ -48,7 +48,7 @@ describe("ApiClient", () => {
 
 		expect(result).toEqual(mockResponse);
 		expect(mockFetch).toHaveBeenCalledWith(
-			"https://api.snapback.dev/api/analyze/fast",
+			"https://api.vreko.dev/api/analyze/fast",
 			expect.objectContaining({
 				method: "POST",
 				headers: {
@@ -83,7 +83,7 @@ describe("ApiClient", () => {
 
 		expect(result).toBe(true);
 		expect(mockFetch).toHaveBeenCalledWith(
-			"https://api.snapback.dev/api/health",
+			"https://api.vreko.dev/api/health",
 			expect.objectContaining({
 				method: "GET",
 				headers: {

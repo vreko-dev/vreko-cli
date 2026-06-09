@@ -1,5 +1,5 @@
 /**
- * Secure Credentials Storage for SnapBack CLI
+ * Secure Credentials Storage for Vreko CLI
  *
  * FIX 4: Implements OS keychain storage with file fallback
  *
@@ -12,16 +12,17 @@
  */
 
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:crypto";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { homedir, hostname, platform, userInfo } from "node:os";
 import { dirname, join } from "node:path";
-import type { GlobalCredentials } from "./snapback-dir";
+import type { GlobalCredentials } from "./vreko-dir";
 
 // =============================================================================
 // CONSTANTS
 // =============================================================================
 
-const SERVICE_NAME = "snapback-cli";
+const SERVICE_NAME = "vreko-cli";
 const ACCOUNT_NAME = "default";
 const ENCRYPTION_ALGORITHM = "aes-256-gcm";
 const KEY_LENGTH = 32;
@@ -30,9 +31,17 @@ const AUTH_TAG_LENGTH = 16;
 const SALT_LENGTH = 32;
 
 // File paths
-const GLOBAL_DIR = join(homedir(), ".snapback");
+const GLOBAL_DIR = join(homedir(), ".vreko");
 const CREDENTIALS_FILE = join(GLOBAL_DIR, "credentials.json");
 const ENCRYPTED_CREDENTIALS_FILE = join(GLOBAL_DIR, "credentials.enc");
+/**
+ * AUTH-04: per-install secret. Random entropy generated once, persisted at 0o600,
+ * and NEVER written into the credential file header. The encrypted file stores
+ * only the KDF salt; without this secret a same-UID reader of credentials.enc
+ * cannot recompute the key from machine values alone.
+ */
+const PER_INSTALL_SECRET_FILE = join(GLOBAL_DIR, ".cred-key");
+const PER_INSTALL_SECRET_LENGTH = 32;
 
 // =============================================================================
 // KEYCHAIN INTERFACE
@@ -61,7 +70,6 @@ interface KeychainProvider {
 async function createKeytarProvider(): Promise<KeychainProvider | null> {
 	try {
 		// Dynamic import to handle missing keytar gracefully
-		// @ts-expect-error - keytar is optional dependency
 		const keytar = await import("keytar");
 
 		return {
@@ -69,7 +77,7 @@ async function createKeytarProvider(): Promise<KeychainProvider | null> {
 			async isAvailable(): Promise<boolean> {
 				try {
 					// Test availability by trying a no-op operation
-					await keytar.getPassword("__snapback_test__", "__test__");
+					await keytar.getPassword("__vreko_test__", "__test__");
 					return true;
 				} catch {
 					return false;
@@ -96,12 +104,48 @@ async function createKeytarProvider(): Promise<KeychainProvider | null> {
 // =============================================================================
 
 /**
- * Derive an encryption key from machine-specific data
- * This provides defense-in-depth even if the file is copied to another machine
+ * Read or create the per-install secret (AUTH-04).
+ *
+ * Generated once with crypto.randomBytes, stored at PER_INSTALL_SECRET_FILE with
+ * mode 0o600, and read on subsequent calls. This secret is the real key entropy:
+ * it is never embedded in the credential file, so a reader of credentials.enc
+ * (who sees only the salt) cannot derive the key from recomputable machine values.
+ * Two installs on the same machine generate different secrets → different keys.
  */
-function deriveMachineKey(salt: Buffer): Buffer {
-	// Combine machine-specific values for key derivation
-	const machineData = [
+function getOrCreatePerInstallSecret(): Buffer {
+	try {
+		if (existsSync(PER_INSTALL_SECRET_FILE)) {
+			const existing = readFileSync(PER_INSTALL_SECRET_FILE);
+			if (existing.length >= PER_INSTALL_SECRET_LENGTH) {
+				return existing;
+			}
+		}
+	} catch {
+		// fall through to (re)generate
+	}
+
+	const secret = randomBytes(PER_INSTALL_SECRET_LENGTH);
+	mkdirSync(dirname(PER_INSTALL_SECRET_FILE), { recursive: true });
+	// Write with restrictive permissions, then chmod to guarantee 0o600 even if
+	// the umask widened the create mode.
+	writeFileSync(PER_INSTALL_SECRET_FILE, secret, { mode: 0o600 });
+	try {
+		chmodSync(PER_INSTALL_SECRET_FILE, 0o600);
+	} catch {
+		// best-effort on platforms without POSIX modes
+	}
+	return secret;
+}
+
+/**
+ * Derive an encryption key from machine-specific data PLUS a per-install secret.
+ *
+ * The machine values alone are recomputable by any same-UID process, and the salt
+ * lives in the credential file header  -  so without the per-install secret the key
+ * is offline-derivable (AUTH-04 / F-5). Mixing in the secret closes that gap.
+ */
+function machineDataString(): string {
+	return [
 		hostname(),
 		platform(),
 		userInfo().username,
@@ -110,8 +154,26 @@ function deriveMachineKey(salt: Buffer): Buffer {
 		process.arch,
 		process.platform,
 	].join("|");
+}
 
-	return scryptSync(machineData, salt, KEY_LENGTH);
+/**
+ * Pure key derivation from machine data + a per-install secret + salt.
+ * Exported for testing (R-4.1): with identical machine data and salt, two
+ * different per-install secrets MUST yield different keys.
+ */
+export function deriveKeyFromSecret(salt: Buffer, perInstallSecret: Buffer): Buffer {
+	const keyMaterial = Buffer.concat([
+		Buffer.from(machineDataString(), "utf8"),
+		Buffer.from("|", "utf8"),
+		perInstallSecret,
+	]);
+	return scryptSync(keyMaterial, salt, KEY_LENGTH);
+}
+
+function deriveMachineKey(salt: Buffer): Buffer {
+	// AUTH-04: bind the key to the per-install secret. The secret is not stored
+	// anywhere recomputable from the credential file (only the salt is).
+	return deriveKeyFromSecret(salt, getOrCreatePerInstallSecret());
 }
 
 /**
@@ -214,10 +276,6 @@ function _createPlainFileProvider(): KeychainProvider {
 		},
 		async setPassword(_service: string, _account: string, password: string): Promise<void> {
 			if (process.env.NODE_ENV === "production" && !warningShown) {
-				console.warn(
-					"\n⚠️  Warning: Storing credentials in plain text. " +
-						"Install 'keytar' for OS keychain support: pnpm add keytar\n",
-				);
 				warningShown = true;
 			}
 

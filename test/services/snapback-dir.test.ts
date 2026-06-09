@@ -1,7 +1,7 @@
 /**
- * Tests for snapback-dir.ts service
+ * Tests for vreko-dir.ts service
  *
- * Tests the .snapback/ directory management functionality.
+ * Tests the .vreko/ directory management functionality.
  */
 
 import { mkdir, readFile, rm } from "node:fs/promises";
@@ -10,18 +10,18 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
-	appendSnapbackJsonl,
-	createSnapbackDirectory,
+	appendVrekoJsonl,
+	createVrekoDirectory,
 	generateId,
 	getProtectedFiles,
 	getWorkspaceConfig,
 	getWorkspaceDir,
 	getWorkspaceVitals,
-	isSnapbackInitialized,
+	isVrekoInitialized,
 	type LearningEntry,
-	loadSnapbackJsonl,
+	loadVrekoJsonl,
 	type ProtectedFile,
-	readSnapbackJson,
+	readVrekoJson,
 	recordLearning,
 	recordViolation,
 	saveProtectedFiles,
@@ -30,15 +30,15 @@ import {
 	type ViolationEntry,
 	type WorkspaceConfig,
 	type WorkspaceVitals,
-	writeSnapbackJson,
-} from "../../src/services/snapback-dir";
+	writeVrekoJson,
+} from "../../src/services/vreko-dir";
 
-describe("snapback-dir service", () => {
+describe("vreko-dir service", () => {
 	let testDir: string;
 
 	beforeEach(async () => {
 		// Create a temporary test directory
-		testDir = join(tmpdir(), `snapback-test-${Date.now()}`);
+		testDir = join(tmpdir(), `vreko-test-${Date.now()}`);
 		await mkdir(testDir, { recursive: true });
 	});
 
@@ -51,20 +51,20 @@ describe("snapback-dir service", () => {
 		}
 	});
 
-	describe("createSnapbackDirectory", () => {
-		it("should create .snapback directory structure", async () => {
-			await createSnapbackDirectory(testDir);
+	describe("createVrekoDirectory", () => {
+		it("should create .vreko directory structure", async () => {
+			await createVrekoDirectory(testDir);
 
 			// Verify directories exist
-			const snapbackDir = join(testDir, ".snapback");
-			const patternsDir = join(snapbackDir, "patterns");
-			const learningsDir = join(snapbackDir, "learnings");
-			const sessionDir = join(snapbackDir, "session");
-			const snapshotsDir = join(snapbackDir, "snapshots");
+			const vrekoDir = join(testDir, ".vreko");
+			const patternsDir = join(vrekoDir, "patterns");
+			const learningsDir = join(vrekoDir, "learnings");
+			const sessionDir = join(vrekoDir, "session");
+			const snapshotsDir = join(vrekoDir, "snapshots");
 
 			const { stat } = await import("node:fs/promises");
 
-			expect((await stat(snapbackDir)).isDirectory()).toBe(true);
+			expect((await stat(vrekoDir)).isDirectory()).toBe(true);
 			expect((await stat(patternsDir)).isDirectory()).toBe(true);
 			expect((await stat(learningsDir)).isDirectory()).toBe(true);
 			expect((await stat(sessionDir)).isDirectory()).toBe(true);
@@ -72,9 +72,9 @@ describe("snapback-dir service", () => {
 		});
 
 		it("should create .gitignore file", async () => {
-			await createSnapbackDirectory(testDir);
+			await createVrekoDirectory(testDir);
 
-			const gitignorePath = join(testDir, ".snapback", ".gitignore");
+			const gitignorePath = join(testDir, ".vreko", ".gitignore");
 			const content = await readFile(gitignorePath, "utf-8");
 
 			expect(content).toContain("snapshots/");
@@ -82,23 +82,23 @@ describe("snapback-dir service", () => {
 		});
 
 		it("should be idempotent (safe to call multiple times)", async () => {
-			await createSnapbackDirectory(testDir);
-			await createSnapbackDirectory(testDir);
+			await createVrekoDirectory(testDir);
+			await createVrekoDirectory(testDir);
 
-			const snapbackDir = join(testDir, ".snapback");
+			const vrekoDir = join(testDir, ".vreko");
 			const { stat } = await import("node:fs/promises");
-			expect((await stat(snapbackDir)).isDirectory()).toBe(true);
+			expect((await stat(vrekoDir)).isDirectory()).toBe(true);
 		});
 	});
 
-	describe("isSnapbackInitialized", () => {
+	describe("isVrekoInitialized", () => {
 		it("should return false for non-initialized workspace", async () => {
-			const result = await isSnapbackInitialized(testDir);
+			const result = await isVrekoInitialized(testDir);
 			expect(result).toBe(false);
 		});
 
 		it("should return true after initialization with config", async () => {
-			await createSnapbackDirectory(testDir);
+			await createVrekoDirectory(testDir);
 			await saveWorkspaceConfig(
 				{
 					createdAt: new Date().toISOString(),
@@ -107,35 +107,35 @@ describe("snapback-dir service", () => {
 				testDir,
 			);
 
-			const result = await isSnapbackInitialized(testDir);
+			const result = await isVrekoInitialized(testDir);
 			expect(result).toBe(true);
 		});
 	});
 
 	describe("JSON operations", () => {
 		beforeEach(async () => {
-			await createSnapbackDirectory(testDir);
+			await createVrekoDirectory(testDir);
 		});
 
 		it("should write and read JSON files", async () => {
 			const testData = { foo: "bar", count: 42 };
 
-			await writeSnapbackJson("test.json", testData, testDir);
-			const result = await readSnapbackJson<typeof testData>("test.json", testDir);
+			await writeVrekoJson("test.json", testData, testDir);
+			const result = await readVrekoJson<typeof testData>("test.json", testDir);
 
 			expect(result).toEqual(testData);
 		});
 
 		it("should return null for non-existent files", async () => {
-			const result = await readSnapbackJson("non-existent.json", testDir);
+			const result = await readVrekoJson("non-existent.json", testDir);
 			expect(result).toBeNull();
 		});
 
 		it("should append to JSONL files", async () => {
-			await appendSnapbackJsonl("test.jsonl", { id: 1, name: "first" }, testDir);
-			await appendSnapbackJsonl("test.jsonl", { id: 2, name: "second" }, testDir);
+			await appendVrekoJsonl("test.jsonl", { id: 1, name: "first" }, testDir);
+			await appendVrekoJsonl("test.jsonl", { id: 2, name: "second" }, testDir);
 
-			const result = await loadSnapbackJsonl<{ id: number; name: string }>("test.jsonl", testDir);
+			const result = await loadVrekoJsonl<{ id: number; name: string }>("test.jsonl", testDir);
 
 			expect(result).toHaveLength(2);
 			expect(result[0]).toEqual({ id: 1, name: "first" });
@@ -143,14 +143,14 @@ describe("snapback-dir service", () => {
 		});
 
 		it("should return empty array for non-existent JSONL files", async () => {
-			const result = await loadSnapbackJsonl("non-existent.jsonl", testDir);
+			const result = await loadVrekoJsonl("non-existent.jsonl", testDir);
 			expect(result).toEqual([]);
 		});
 	});
 
 	describe("WorkspaceConfig operations", () => {
 		beforeEach(async () => {
-			await createSnapbackDirectory(testDir);
+			await createVrekoDirectory(testDir);
 		});
 
 		it("should save and retrieve workspace config", async () => {
@@ -176,7 +176,7 @@ describe("snapback-dir service", () => {
 
 	describe("WorkspaceVitals operations", () => {
 		beforeEach(async () => {
-			await createSnapbackDirectory(testDir);
+			await createVrekoDirectory(testDir);
 		});
 
 		it("should save and retrieve workspace vitals", async () => {
@@ -196,7 +196,7 @@ describe("snapback-dir service", () => {
 
 	describe("ProtectedFiles operations", () => {
 		beforeEach(async () => {
-			await createSnapbackDirectory(testDir);
+			await createVrekoDirectory(testDir);
 		});
 
 		it("should save and retrieve protected files", async () => {
@@ -219,7 +219,7 @@ describe("snapback-dir service", () => {
 
 	describe("Learning operations", () => {
 		beforeEach(async () => {
-			await createSnapbackDirectory(testDir);
+			await createVrekoDirectory(testDir);
 		});
 
 		it("should record learnings", async () => {
@@ -234,7 +234,7 @@ describe("snapback-dir service", () => {
 
 			await recordLearning(learning, testDir);
 
-			const { getLearnings } = await import("../../src/services/snapback-dir");
+			const { getLearnings } = await import("../../src/services/vreko-dir");
 			const learnings = await getLearnings(testDir);
 
 			expect(learnings).toHaveLength(1);
@@ -244,7 +244,7 @@ describe("snapback-dir service", () => {
 
 	describe("Violation operations", () => {
 		beforeEach(async () => {
-			await createSnapbackDirectory(testDir);
+			await createVrekoDirectory(testDir);
 		});
 
 		it("should record violations", async () => {
@@ -257,7 +257,7 @@ describe("snapback-dir service", () => {
 
 			await recordViolation(violation, testDir);
 
-			const { getViolations } = await import("../../src/services/snapback-dir");
+			const { getViolations } = await import("../../src/services/vreko-dir");
 			const violations = await getViolations(testDir);
 
 			expect(violations).toHaveLength(1);
@@ -285,12 +285,12 @@ describe("snapback-dir service", () => {
 	describe("getWorkspaceDir", () => {
 		it("should return correct path for workspace root", () => {
 			const result = getWorkspaceDir("/some/workspace");
-			expect(result).toBe("/some/workspace/.snapback");
+			expect(result).toBe("/some/workspace/.vreko");
 		});
 
 		it("should use cwd when no root provided", () => {
 			const result = getWorkspaceDir();
-			expect(result).toContain(".snapback");
+			expect(result).toContain(".vreko");
 		});
 	});
 });
