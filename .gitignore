@@ -1,4 +1,5 @@
 node_modules/
+dist/
 dist-types/
 *.log
 .DS_Store
@@ -7,3 +8,4 @@ dist-types/
 *.tsbuildinfo
 coverage/
 .turbo/
+.tmp-*/

@@ -1,5 +1,11 @@
 # @vreko/cli
 
+## 3.1.7
+
+### Patch Changes
+
+- fix: use absolute raw.githubusercontent.com URLs for lockup images in README so they render correctly on npm and GitHub
+
 ## 3.1.6
 
 ### Patch Changes
