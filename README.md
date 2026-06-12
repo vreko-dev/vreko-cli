@@ -1,11 +1,16 @@
-<h1 align="center">@vreko/cli</h1>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./assets/lockup-white.png" width="400">
+    <img alt="Vreko" src="./assets/lockup-dark.png" width="400">
+  </picture>
+</p>
+
 <p align="center">AI-aware developer intelligence from the command line</p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@vreko/cli"><img src="https://img.shields.io/npm/v/%40vreko%2Fcli?style=flat-square&color=4ADE80" alt="npm version" /></a>
   <a href="https://www.npmjs.com/package/@vreko/cli"><img src="https://img.shields.io/npm/dm/%40vreko%2Fcli?style=flat-square&color=4ADE80" alt="npm downloads" /></a>
-  <a href="https://github.com/Vreko-dev/Vreko/actions/workflows/ci.yml"><img src="https://github.com/Vreko-dev/Vreko/actions/workflows/ci.yml/badge.svg?branch=dev" alt="CI" /></a>
-  <a href="https://github.com/Vreko-dev/Vreko/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=flat-square" alt="License" /></a>
+  <a href="https://github.com/vreko-dev/cli/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=flat-square" alt="License" /></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node.js-22.x-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js" /></a>
 </p>
 

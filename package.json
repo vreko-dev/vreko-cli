@@ -1,6 +1,6 @@
 {
   "name": "@vreko/cli",
-  "version": "3.1.5",
+  "version": "3.1.6",
   "description": "Vreko CLI — AI-aware developer intelligence for the command line",
   "homepage": "https://vreko.dev",
   "repository": {

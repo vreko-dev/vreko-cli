@@ -1,5 +1,39 @@
 # @vreko/cli
 
+## 3.1.6
+
+### Patch Changes
+
+- 91ff9e2: fix: auth security hardening and Better Auth 1.6.16 compatibility
+  - Closed IDOR vulnerabilities in the api-key-plugin (users could previously enumerate or modify other users' API keys)
+  - Restored `createApiKey`/`verifyApiKey` surface after Better Auth v1.6.5 removed the apiKey plugin; now re-implemented via the plugin injection pattern
+  - Passed `schema: {}` to `deviceAuthorization` to satisfy the required field added in Better Auth 1.6.16 (previously caused a runtime crash on `vr login`)
+  - Account lockout now fails closed rather than open; unsigned `x-auth-context` accept branch removed
+
+- 91ff9e2: fix: production URL defaults, init guard, and daemon idle timeout
+  - CLI now defaults to production API (`api.vreko.dev`) and console (`console.vreko.dev`) endpoints out of the box so global installs work without configuration
+  - `vr init` no longer overwrites an existing config unless `--force` is passed; null client returned gracefully on health check failure
+  - Daemon auto-start idle timeout raised from 15 min to 240 min to prevent premature shutdown during long coding sessions
+
+- 7f65887: fix: device code login flow now works end-to-end
+
+  `vr login` was failing at two points: the CLI was not targeting the
+  correct API endpoint, and the device approval page was resolving to the
+  wrong domain. Both are fixed — the approval page now correctly opens
+  at `console.vreko.dev/link`.
+
+- Updated dependencies [91ff9e2]
+- Updated dependencies [91ff9e2]
+- Updated dependencies [7f65887]
+  - @vreko/auth@0.1.2
+  - @vreko/contracts@1.1.0
+  - @vreko/local-service@3.1.1
+  - @vreko/claims-ledger@0.1.2
+  - @vreko/intelligence@0.1.2
+  - @vreko/local-service-client@1.0.1
+  - @vreko/mcp@0.1.2
+  - @vreko/mcp-client@0.1.2
+
 ## 3.1.0
 
 ### Minor Changes
