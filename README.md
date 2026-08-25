@@ -10,7 +10,7 @@
 <p align="center">
   <a href="https://www.npmjs.com/package/@vreko/cli"><img src="https://img.shields.io/npm/v/%40vreko%2Fcli?style=flat-square&color=4ADE80" alt="npm version" /></a>
   <a href="https://www.npmjs.com/package/@vreko/cli"><img src="https://img.shields.io/npm/dm/%40vreko%2Fcli?style=flat-square&color=4ADE80" alt="npm downloads" /></a>
-  <a href="https://github.com/vreko-dev/cli/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=flat-square" alt="License" /></a>
+  <a href="https://github.com/vreko-dev/vreko-cli/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=flat-square" alt="License" /></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node.js-22.x-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js" /></a>
 </p>
 
@@ -45,12 +45,18 @@ Shorthand: `vr --help`
 
 Vreko learns from what breaks — secrets overwritten, phantom dependencies introduced, config files mangled by AI tools. Over time it knows your codebase's specific fragile zones and predicts problems before they occur. Recovery is instant when you need it. The goal is you rarely do.
 
-## Proof stack
+## Design properties
 
-- 94% AI detection accuracy across Cursor, Copilot, and Claude Code
-- <50ms overhead — zero-friction protection
-- <1s context injection — full intelligence loaded instantly
-- Code never leaves your machine — local-first, privacy-first
+- **Local-first.** Analysis runs against the local daemon; there is no requirement to
+  send repository contents to a remote service to use the CLI.
+- **Detection is heuristic.** AI-attributed change detection across Cursor, Copilot and
+  Claude Code is a heuristic over edit timing and shape. It is not exact, and no
+  accuracy figure is published because no reproducible benchmark has been published to
+  support one.
+- **Optional cloud.** Authentication and sync are opt-in; `vr status` reports which
+  mode you are in.
+
+Run `vr doctor` for the diagnostics this build actually reports about your machine.
 
 ## Commands
 
@@ -98,6 +104,18 @@ The CLI bundles the Vreko MCP server. Add to your AI assistant's config:
 
 [docs.vreko.dev/cli](https://docs.vreko.dev/cli)
 
+## What this repository contains
+
+This repository is the **public distribution and documentation surface** for
+`@vreko/cli`. The CLI is built from the proprietary Vreko core, so the implementation
+is not published here — this repository carries the package manifest, changelog,
+license and documentation that ship with the release.
+
+Installable artifacts are on npm:
+[`@vreko/cli`](https://www.npmjs.com/package/@vreko/cli). What the CLI does at the
+protocol boundary is inspectable in
+[`vreko-dev/mcp-server`](https://github.com/vreko-dev/mcp-server).
+
 ## License
 
-Apache-2.0
+Apache-2.0. Copyright 2026 Vreko, Inc.
