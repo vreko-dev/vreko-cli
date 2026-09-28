@@ -1,7 +1,7 @@
 {
   "name": "@vreko/cli",
   "version": "3.1.7",
-  "description": "Vreko CLI — AI-aware developer intelligence for the command line",
+  "description": "Legacy Vreko developer-intelligence CLI retained for compatibility; current private Alpha centers on Operator Passport evidence authority.",
   "homepage": "https://vreko.dev",
   "repository": {
     "type": "git",
@@ -17,18 +17,11 @@
   },
   "keywords": [
     "vreko",
-    "ambient-codebase-intelligence",
-    "codebase-intelligence",
-    "ai-codebase-intelligence",
-    "ai-coding-mistakes-prevention",
-    "fragile-files",
-    "cursor-companion",
-    "claude-code-companion",
-    "copilot-companion",
-    "ai-agent-context",
+    "legacy-developer-tooling",
     "cli",
-    "snapshots",
-    "intelligence"
+    "ai-agent-context",
+    "workspace-intelligence",
+    "snapshots"
   ],
   "bin": {
     "vreko": "dist/index.js",
