@@ -5,7 +5,7 @@
   </picture>
 </p>
 
-<p align="center">AI-aware developer intelligence from the command line</p>
+<p align="center">Legacy developer-tooling distribution surface for Vreko</p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@vreko/cli"><img src="https://img.shields.io/npm/v/%40vreko%2Fcli?style=flat-square&color=4ADE80" alt="npm version" /></a>
@@ -23,7 +23,11 @@
 
 ---
 
-Vreko watches what your AI tools do, learns your codebase's fragile zones, and surfaces the right context before problems occur. The CLI is the primary interface to the local Vreko daemon (`vrekod`).
+> **Current product boundary · 2026-09-28:** Vreko's current private Alpha tests proposition-specific professional evidence, Operator Passport, bounded disclosure, and recipient reliance. This repository distributes the earlier developer-intelligence CLI and documents that implementation. It is **not** the current Alpha onboarding path or positioning authority.
+>
+> The CLI behavior below is retained as technical documentation. Generic context delivery, permission plumbing, model choice, and retrieval speed are not Vreko's current differentiation claim.
+
+This CLI belongs to Vreko's earlier developer-intelligence implementation. It manages the local Vreko daemon (`vrekod`) and related terminal workflows.
 
 ## Install
 
